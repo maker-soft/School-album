@@ -7,7 +7,7 @@
     <rect width="1600" height="1100" fill="url(#bg)"/>
     <circle cx="1340" cy="170" r="210" fill="#fff" opacity=".18"/>
     <circle cx="180" cy="930" r="280" fill="#fff" opacity=".12"/>
-    <g filter="url(#shadow)" transform="translate(190 150) rotate(-2 650 430)">
+    <g filter="url(#shadow)" transform="translate(190 120) rotate(1 650 430)">
       <rect x="180" y="90" rx="24" width="820" height="720" fill="url(#cover)"/>
       <rect x="240" y="160" rx="18" width="700" height="430" fill="#f9f7f2" opacity=".96"/>
       <circle cx="590" cy="345" r="126" fill="#caa57d"/>
