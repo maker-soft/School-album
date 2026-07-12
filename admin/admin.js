@@ -1,47 +1,545 @@
-(() => {
-  const cfg=window.SITE_CONFIG||{}, defaults=window.DEFAULT_SITE_CONTENT;
-  const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
-  let client=null,data=structuredClone(defaults),saved=structuredClone(defaults),currentTab='overview',session=null;
-  const configured=()=>cfg.SUPABASE_URL&&!cfg.SUPABASE_URL.includes('YOUR_PROJECT')&&cfg.SUPABASE_PUBLISHABLE_KEY&&!cfg.SUPABASE_PUBLISHABLE_KEY.includes('YOUR_');
-  const clone=x=>structuredClone(x);
-  const deepMerge=(base,extra)=>{if(Array.isArray(base)) return Array.isArray(extra)?extra:base;if(base&&typeof base==='object'){const out={...base};if(extra&&typeof extra==='object')Object.keys(extra).forEach(k=>out[k]=k in base?deepMerge(base[k],extra[k]):extra[k]);return out}return extra??base};
-  const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  function migrate(raw){const x=clone(raw||{});if(Array.isArray(x.portfolio)){x.portfolio={...defaults.portfolio,items:x.portfolio}}if(x.portfolioSection){x.portfolio={...(x.portfolio||{}),...x.portfolioSection}}if(x.portfolio?.circleText&&!x.portfolio.circle)x.portfolio.circle={...defaults.portfolio.circle,outerText:x.portfolio.circleText};return deepMerge(defaults,x)}
-  function get(path){return path.split('.').reduce((o,k)=>o?.[k],data)}
-  function set(path,value){const keys=path.split('.');let o=data;for(let i=0;i<keys.length-1;i++){const k=keys[i],next=keys[i+1];if(o[k]==null)o[k]=/^\d+$/.test(next)?[]:{};o=o[k]}o[keys[keys.length-1]]=value}
-  const field=(label,path,value,opts={})=>`<label class="${opts.full?'full':''}">${esc(label)}${opts.textarea?`<textarea data-path="${path}">${esc(value)}</textarea>`:`<input data-path="${path}" type="${opts.type||'text'}" value="${esc(value)}" ${opts.min!=null?`min="${opts.min}"`:''} ${opts.max!=null?`max="${opts.max}"`:''} ${opts.step!=null?`step="${opts.step}"`:''}>`}</label>`;
-  const checkbox=(label,path,value)=>`<label><span>${esc(label)}</span><input data-path="${path}" type="checkbox" ${value?'checked':''}></label>`;
-  const color=(label,path,value)=>`<label>${esc(label)}<span class="color-field"><input data-path="${path}" type="color" value="${esc(value)}"><input data-path="${path}" type="text" value="${esc(value)}"></span></label>`;
-  const upload=(label,path,value)=>`<div class="full"><label>${esc(label)}</label><div class="upload-row"><input data-path="${path}" value="${esc(value||'')}" placeholder="URL изображения"><button type="button" class="secondary upload-button" data-upload="${path}">Загрузить</button></div>${value?`<img class="preview-img" src="${esc(value)}" alt="Предпросмотр">`:''}</div>`;
-  async function init(){if(configured()&&window.supabase){client=window.supabase.createClient(cfg.SUPABASE_URL,cfg.SUPABASE_PUBLISHABLE_KEY);const {data:{session:s}}=await client.auth.getSession();if(s){session=s;await enter()}else showLogin()}else{showLogin(true)}}
-  function showLogin(local=false){$('#loginScreen').hidden=false;$('#adminApp').hidden=true;if(local)$('#loginMessage').textContent='Демо-режим: email любой, пароль admin2026. Для общей базы заполните config.js.'}
-  $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();const email=$('#loginEmail').value.trim(),password=$('#loginPassword').value;if(client){$('#loginMessage').textContent='Выполняется вход…';const {data:d,error}=await client.auth.signInWithPassword({email,password});if(error){$('#loginMessage').textContent=error.message;return}session=d.session;await enter()}else{if(password!=='admin2026'){$('#loginMessage').textContent='Неверный демо-пароль';return}session={user:{email}};await enter()}});
-  async function enter(){try{if(client){const {data:membership}=await client.from('admin_users').select('user_id').eq('user_id',session.user.id).maybeSingle();if(!membership)throw new Error('Пользователь вошёл, но его UID не добавлен в public.admin_users');const {data:row,error}=await client.from('site_content').select('content').eq('id',cfg.CONTENT_ROW_ID||1).maybeSingle();if(error)throw error;data=migrate(row?.content||defaults)}else{data=migrate(JSON.parse(localStorage.getItem('schoolPhotoContent')||'null')||defaults)}saved=clone(data);$('#loginScreen').hidden=true;$('#adminApp').hidden=false;render()}catch(e){$('#loginMessage').textContent=e.message;$('#loginScreen').hidden=false;$('#adminApp').hidden=true}}
-  $('#logoutButton').addEventListener('click',async()=>{if(client)await client.auth.signOut();location.reload()});
-  $('#adminNav').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(!b)return;currentTab=b.dataset.tab;$$('#adminNav button').forEach(x=>x.classList.toggle('active',x===b));render()});
-  $('#resetButton').addEventListener('click',()=>{data=clone(saved);render();status('Форма возвращена к последнему сохранению')});
-  $('#saveButton').addEventListener('click',save);
-  function status(t,err=false){const n=$('#saveStatus');n.textContent=t;n.style.color=err?'#a33':''}
-  async function save(){status('Сохранение…');try{if(client){const {error}=await client.from('site_content').upsert({id:cfg.CONTENT_ROW_ID||1,content:data},{onConflict:'id'});if(error)throw error}else localStorage.setItem('schoolPhotoContent',JSON.stringify(data));saved=clone(data);status('Сохранено')}catch(e){status(e.message,true)}}
-  function bind(){
-    $$('[data-path]').forEach(n=>{const handler=()=>{let v=n.type==='checkbox'?n.checked:n.value;if(n.type==='number')v=Number(v);set(n.dataset.path,v);status('Есть несохранённые изменения');if(n.dataset.path.startsWith('portfolio.circle.'))refreshCirclePreview();if(n.type==='color')$$(`[data-path="${CSS.escape(n.dataset.path)}"]`).forEach(x=>{if(x!==n)x.value=v})};n.addEventListener('input',handler);n.addEventListener('change',handler)});
-    $$('.upload-button').forEach(b=>b.addEventListener('click',()=>chooseFile(b.dataset.upload)));
-    $$('[data-delete]').forEach(b=>b.addEventListener('click',()=>{const [arr,i]=b.dataset.delete.split('|');get(arr).splice(+i,1);render();status('Элемент удалён; сохраните изменения')}));
-    $$('[data-add]').forEach(b=>b.addEventListener('click',()=>{const arr=get(b.dataset.add);if(b.dataset.add==='portfolio.items')arr.push({image:'',full:'',label:'Новая фотография',alt:'Фотография из портфолио'});if(b.dataset.add==='process')arr.push({number:String(arr.length+1).padStart(2,'0'),title:'Новый этап',text:'Описание этапа'});if(b.dataset.add==='faq')arr.push({question:'Новый вопрос',answer:'Ответ'});render();status('Элемент добавлен; сохраните изменения')}));
+const clone = (value) => JSON.parse(JSON.stringify(value));
+const $ = (selector) => document.querySelector(selector);
+const ws = $('#workspace');
+const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+}[char]));
+
+function mergeDefaults(defaultValue, storedValue) {
+  if (Array.isArray(defaultValue)) return Array.isArray(storedValue) ? clone(storedValue) : clone(defaultValue);
+  if (defaultValue && typeof defaultValue === 'object') {
+    const source = storedValue && typeof storedValue === 'object' && !Array.isArray(storedValue) ? storedValue : {};
+    const result = {};
+    Object.keys(defaultValue).forEach((key) => { result[key] = mergeDefaults(defaultValue[key], source[key]); });
+    Object.keys(source).forEach((key) => { if (!(key in result)) result[key] = clone(source[key]); });
+    return result;
   }
-  async function chooseFile(path){const input=document.createElement('input');input.type='file';input.accept='image/jpeg,image/png,image/webp,image/avif,image/gif,image/svg+xml';input.onchange=async()=>{const file=input.files[0];if(!file)return;status('Загрузка изображения…');try{let url;if(client){const safe=file.name.toLowerCase().replace(/[^a-z0-9._-]/g,'-');const object=`uploads/${Date.now()}-${safe}`;const {error}=await client.storage.from(cfg.STORAGE_BUCKET||'site-images').upload(object,file,{upsert:false});if(error)throw error;url=client.storage.from(cfg.STORAGE_BUCKET||'site-images').getPublicUrl(object).data.publicUrl}else url=await new Promise((res,rej)=>{const r=new FileReader;r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file)});set(path,url);if(path.match(/^portfolio\.items\.\d+\.image$/))set(path.replace(/\.image$/,'.full'),url);render();status('Изображение загружено; нажмите «Сохранить»')}catch(e){status(e.message,true)}};input.click()}
-  function render(){const titles={overview:'Обзор',general:'Основное и логотипы',albums:'Альбомы',portfolio:'Портфолио и текст в круге',process:'Этапы съёмки',faq:'Частые вопросы',design:'Дизайн и шрифты'};$('#pageTitle').textContent=titles[currentTab];const fn={overview:renderOverview,general:renderGeneral,albums:renderAlbums,portfolio:renderPortfolio,process:renderProcess,faq:renderFaq,design:renderDesign}[currentTab];$('#workspace').innerHTML=fn();bind();if(currentTab==='overview')loadStats();if(currentTab==='portfolio')refreshCirclePreview()}
-  function renderOverview(){return `<div class="stats"><div class="stat"><b id="sPage">—</b><span>Просмотры</span></div><div class="stat"><b id="sVk">—</b><span>Переходы VK</span></div><div class="stat"><b id="sPhoto">—</b><span>Открытия фото</span></div><div class="stat"><b id="sOrder">—</b><span>Заказы</span></div></div><section class="panel"><h2>Состояние сайта</h2><p>Версия контента: ${esc(data.version||3)}. Публичная ссылка на административную панель отсутствует. Для входа используйте прямой адрес <code>/admin/</code>.</p><p class="panel-note">Исправленная версия позволяет редактировать весь заголовочный текст портфолио, подписи изображений и четыре текстовых поля круглого элемента.</p></section>`}
-  async function loadStats(){if(!client){['sPage','sVk','sPhoto','sOrder'].forEach(id=>$('#'+id).textContent='0');return}const {data:s}=await client.rpc('get_site_stats');if(!s)return;$('#sPage').textContent=s.pageviews||0;$('#sVk').textContent=s.vk_click||0;$('#sPhoto').textContent=s.photo_open||0;$('#sOrder').textContent=s.album_order||0}
-  function renderGeneral(){return `<section class="panel"><h2>Название и контакты</h2><div class="form-grid">${field('Название студии','site.name',data.site.name)}${field('Подпись бренда','site.tagline',data.site.tagline)}${field('Ссылка VK','site.vkUrl',data.site.vkUrl,{full:true})}${field('Текст кнопки в шапке','site.headerButton',data.site.headerButton)}${field('Текст подвала','site.footerText',data.site.footerText,{textarea:true,full:true})}</div></section><section class="panel"><h2>Логотипы</h2><div class="form-grid">${field('Буквенный знак','logos.markText',data.logos.markText)}${checkbox('Показывать название','logos.showName',data.logos.showName)}${checkbox('Показывать подпись','logos.showTagline',data.logos.showTagline)}${upload('Логотип шапки','logos.headerUrl',data.logos.headerUrl)}${upload('Логотип подвала','logos.footerUrl',data.logos.footerUrl)}${upload('Favicon','logos.faviconUrl',data.logos.faviconUrl)}</div></section><section class="panel"><h2>Первый экран</h2><div class="form-grid">${field('Надзаголовок','hero.eyebrow',data.hero.eyebrow,{full:true})}${field('Основная строка','hero.title',data.hero.title)}${field('Акцентная строка','hero.accent',data.hero.accent)}${field('Описание','hero.text',data.hero.text,{textarea:true,full:true})}${field('Кнопка','hero.button',data.hero.button)}${field('Нижняя подпись','hero.note',data.hero.note)}${upload('Главная фотография','hero.image',data.hero.image)}</div></section>`}
-  function renderAlbums(){return `<section class="panel"><h2>Заголовок раздела</h2><div class="form-grid">${field('Надзаголовок','albumsSection.eyebrow',data.albumsSection.eyebrow)}${field('Заголовок','albumsSection.title',data.albumsSection.title)}${field('Описание','albumsSection.text',data.albumsSection.text,{textarea:true,full:true})}</div></section>${data.albums.map((a,i)=>`<section class="panel"><h2>${esc(a.name)}</h2><div class="form-grid">${field('Название',`albums.${i}.name`,a.name)}${field('Подзаголовок',`albums.${i}.subtitle`,a.subtitle)}${field('Цена',`albums.${i}.price`,a.price)}${field('Метка',`albums.${i}.badge`,a.badge)}${field('Описание',`albums.${i}.description`,a.description,{textarea:true,full:true})}${field('Характеристики — по одной на строку',`albums.${i}.detailsText`,a.details.join('\n'),{textarea:true,full:true})}${field('Текст кнопки',`albums.${i}.button`,a.button)}${upload('Изображение',`albums.${i}.image`,a.image)}</div></section>`).join('')}`}
-  function renderPortfolio(){const p=data.portfolio;return `<section class="panel"><h2>Текст раздела «Портфолио»</h2><p class="panel-note">Теперь эти поля напрямую управляют надзаголовком, двумя строками заголовка, описанием и подсказкой под галереей.</p><div class="form-grid">${field('Надзаголовок','portfolio.eyebrow',p.eyebrow)}${field('Первая строка заголовка','portfolio.title',p.title)}${field('Акцентная строка заголовка','portfolio.accent',p.accent)}${field('Описание портфолио','portfolio.description',p.description,{textarea:true,full:true})}${field('Подсказка под галереей','portfolio.swipeHint',p.swipeHint,{full:true})}</div></section><section class="panel"><h2>Текст в круглом элементе</h2><p class="panel-note">Исправлено: каждая надпись в круге редактируется отдельно. Внешний текст автоматически размещается по окружности.</p><div class="form-grid"><div>${field('Текст по окружности','portfolio.circle.outerText',p.circle.outerText,{textarea:true,full:true})}${field('Верхняя строка внутри круга','portfolio.circle.centerTop',p.circle.centerTop)}${field('Крупная центральная строка','portfolio.circle.centerMain',p.circle.centerMain)}${field('Нижняя строка внутри круга','portfolio.circle.centerBottom',p.circle.centerBottom)}</div><div><div id="circlePreview" class="circle-preview"><svg viewBox="0 0 220 220" aria-hidden="true"><defs><path id="adminCirclePath" d="M110,110 m-84,0 a84,84 0 1,1 168,0 a84,84 0 1,1 -168,0"/></defs><circle cx="110" cy="110" r="102"/><text><textPath id="cpOuterPath" href="#adminCirclePath"></textPath></text></svg><div class="circle-preview-center"><span id="cpTop"></span><strong id="cpMain"></strong><span id="cpBottom"></span></div></div></div></div></section><section class="panel"><div class="item-head"><div><h2>Фотографии и подписи</h2><p class="panel-note">Можно изменить подпись на карточке, описание для доступности и само изображение.</p></div><button type="button" data-add="portfolio.items">Добавить фото</button></div>${p.items.map((x,i)=>`<article class="item-card"><div class="item-head"><h3>Фотография ${i+1}</h3><button type="button" class="danger" data-delete="portfolio.items|${i}">Удалить</button></div><div class="form-grid">${field('Подпись на фотографии',`portfolio.items.${i}.label`,x.label)}${field('Описание изображения (alt)',`portfolio.items.${i}.alt`,x.alt)}${upload('Изображение',`portfolio.items.${i}.image`,x.image)}${field('Полноразмерное изображение — URL',`portfolio.items.${i}.full`,x.full,{full:true})}</div></article>`).join('')}</section>`}
-  function refreshCirclePreview(){if(!$('#circlePreview'))return;setText('#cpOuterPath',get('portfolio.circle.outerText'));setText('#cpTop',get('portfolio.circle.centerTop'));setText('#cpMain',get('portfolio.circle.centerMain'));setText('#cpBottom',get('portfolio.circle.centerBottom'))}
-  function setText(sel,val){const n=$(sel);if(n)n.textContent=val||''}
-  function renderProcess(){return `<section class="panel"><h2>Заголовок раздела</h2><div class="form-grid">${field('Надзаголовок','processSection.eyebrow',data.processSection.eyebrow)}${field('Первая строка','processSection.title',data.processSection.title)}${field('Акцентная строка','processSection.accent',data.processSection.accent)}${field('Описание','processSection.text',data.processSection.text,{textarea:true,full:true})}</div></section><section class="panel"><div class="item-head"><h2>Этапы</h2><button data-add="process">Добавить этап</button></div>${data.process.map((x,i)=>`<article class="item-card"><div class="item-head"><h3>Этап ${i+1}</h3><button class="danger" data-delete="process|${i}">Удалить</button></div><div class="form-grid">${field('Номер',`process.${i}.number`,x.number)}${field('Заголовок',`process.${i}.title`,x.title)}${field('Описание',`process.${i}.text`,x.text,{textarea:true,full:true})}</div></article>`).join('')}</section>`}
-  function renderFaq(){return `<section class="panel"><h2>Заголовок раздела</h2><div class="form-grid">${field('Надзаголовок','faqSection.eyebrow',data.faqSection.eyebrow)}${field('Заголовок','faqSection.title',data.faqSection.title)}${field('Описание','faqSection.text',data.faqSection.text,{textarea:true,full:true})}</div></section><section class="panel"><div class="item-head"><h2>Вопросы</h2><button data-add="faq">Добавить вопрос</button></div>${data.faq.map((x,i)=>`<article class="item-card"><div class="item-head"><h3>Вопрос ${i+1}</h3><button class="danger" data-delete="faq|${i}">Удалить</button></div><div class="form-grid">${field('Вопрос',`faq.${i}.question`,x.question,{full:true})}${field('Ответ',`faq.${i}.answer`,x.answer,{textarea:true,full:true})}</div></article>`).join('')}</section>`}
-  function renderDesign(){const d=data.design;return `<section class="panel"><h2>Шрифты</h2><div class="form-grid">${field('Основной шрифт','design.fonts.bodyFamily',d.fonts.bodyFamily)}${field('Шрифт заголовков','design.fonts.headingFamily',d.fonts.headingFamily)}${field('Шрифт меню','design.fonts.menuFamily',d.fonts.menuFamily)}${field('Шрифт кнопок','design.fonts.buttonFamily',d.fonts.buttonFamily)}${field('Шрифт бренда','design.fonts.brandFamily',d.fonts.brandFamily)}${field('CSS-ссылка внешнего шрифта','design.fonts.stylesheetUrl',d.fonts.stylesheetUrl,{full:true})}</div></section><section class="panel"><h2>Цвета</h2><div class="form-grid three">${Object.entries({background:'Фон',surface:'Карточки',text:'Текст',muted:'Вторичный текст',accent:'Акцент',accent2:'Дополнительный акцент',border:'Границы',dark:'Тёмный фон',darkText:'Текст на тёмном фоне',circle:'Круг'}).map(([k,l])=>color(l,`design.colors.${k}`,d.colors[k])).join('')}</div></section><section class="panel"><h2>Размеры текста</h2><div class="form-grid three">${Object.entries({bodySize:'Основной текст',menuSize:'Меню',buttonSize:'Кнопки',heroTitleSize:'Главный заголовок',sectionTitleSize:'Заголовки разделов',cardTitleSize:'Названия альбомов',cardTextSize:'Текст карточек',priceSize:'Цена',eyebrowSize:'Надзаголовки',faqSize:'Вопросы FAQ',brandNameSize:'Название бренда',brandTaglineSize:'Подпись бренда',portfolioLabelSize:'Подписи фото',circleOuterSize:'Текст по кругу',circleTopSize:'Верх внутри круга',circleMainSize:'Центр круга',circleBottomSize:'Низ внутри круга'}).map(([k,l])=>field(`${l}, px`,`design.typography.${k}`,d.typography[k],{type:'number',min:7,max:140})).join('')}${field('Межстрочный интервал','design.typography.bodyLineHeight',d.typography.bodyLineHeight,{type:'number',min:.8,max:3,step:.05})}${field('Толщина заголовков','design.typography.headingWeight',d.typography.headingWeight,{type:'number',min:100,max:900,step:100})}${field('Толщина текста','design.typography.bodyWeight',d.typography.bodyWeight,{type:'number',min:100,max:900,step:100})}${field('Межбуквенный интервал, px','design.typography.letterSpacing',d.typography.letterSpacing,{type:'number',min:-3,max:12,step:.1})}</div></section><section class="panel"><h2>Размеры и скругления</h2><div class="form-grid three">${Object.entries({contentWidth:'Ширина контента',sidePadding:'Боковые поля',sectionGap:'Отступ разделов',cardRadius:'Скругление карточек',imageRadius:'Скругление изображений',buttonRadius:'Скругление кнопок',headerHeight:'Высота шапки',circleSize:'Размер круга'}).map(([k,l])=>field(`${l}, px`,`design.layout.${k}`,d.layout[k],{type:'number',min:0,max:1600})).join('')}</div></section>`}
-  // detailsText is a virtual editing field converted back into details on save/input
-  document.addEventListener('input',e=>{if(e.target.dataset?.path?.endsWith('.detailsText')){const p=e.target.dataset.path.replace(/\.detailsText$/,'.details');set(p,e.target.value.split('\n').map(x=>x.trim()).filter(Boolean))}},true);
-  init();
-})();
+  return storedValue === undefined || storedValue === null ? defaultValue : storedValue;
+}
+
+let data = clone(window.DEFAULT_CONTENT);
+let tab = 'dashboard';
+let db = null;
+let currentUser = null;
+
+function isConfigured() {
+  const cfg = window.SITE_CONFIG || {};
+  return /^https:\/\/.+\.supabase\.co$/.test(cfg.SUPABASE_URL || '')
+    && cfg.SUPABASE_PUBLISHABLE_KEY
+    && !cfg.SUPABASE_PUBLISHABLE_KEY.includes('YOUR_');
+}
+
+function showLoginMessage(message, isError = false) {
+  const node = $('#loginStatus');
+  node.textContent = message;
+  node.style.color = isError ? '#a03f3f' : '';
+}
+
+function toast(text) {
+  const node = document.createElement('div');
+  node.className = 'toast';
+  node.textContent = text;
+  document.body.append(node);
+  setTimeout(() => node.remove(), 2800);
+}
+
+function setSavingState(text) { $('#saveStatus').textContent = text; }
+
+function assetUrl(url) {
+  const value = String(url || '');
+  if (!value || /^(https?:|data:|blob:|\/)/i.test(value)) return value;
+  return `../${value.replace(/^\.\//, '')}`;
+}
+
+async function verifyAdmin(userId) {
+  const { data: membership, error } = await db.from('admin_users').select('user_id').eq('user_id', userId).maybeSingle();
+  if (error) throw error;
+  return Boolean(membership);
+}
+
+async function loadContent() {
+  const rowId = Number(window.SITE_CONFIG.CONTENT_ROW_ID || 1);
+  const { data: row, error } = await db.from('site_content').select('content').eq('id', rowId).maybeSingle();
+  if (error) throw error;
+  if (row?.content) {
+    data = mergeDefaults(window.DEFAULT_CONTENT, row.content);
+    return;
+  }
+  const { error: insertError } = await db.from('site_content').upsert({ id: rowId, content: data, updated_by: currentUser.id });
+  if (insertError) throw insertError;
+}
+
+async function openPanel(user) {
+  const isAdmin = await verifyAdmin(user.id);
+  if (!isAdmin) {
+    await db.auth.signOut();
+    throw new Error('Учётная запись не включена в таблицу admin_users.');
+  }
+  currentUser = user;
+  await loadContent();
+  $('#login').classList.add('hidden');
+  $('#panel').classList.remove('hidden');
+  render();
+}
+
+async function initialize() {
+  if (!isConfigured() || !window.supabase) {
+    showLoginMessage('Сначала заполните SUPABASE_URL и SUPABASE_PUBLISHABLE_KEY в файле config.js.', true);
+    $('#loginBtn').disabled = true;
+    return;
+  }
+  db = window.supabase.createClient(
+    window.SITE_CONFIG.SUPABASE_URL,
+    window.SITE_CONFIG.SUPABASE_PUBLISHABLE_KEY,
+    { auth: { persistSession: true, autoRefreshToken: true } }
+  );
+  const { data: { session } } = await db.auth.getSession();
+  if (session?.user) {
+    try { await openPanel(session.user); } catch (error) { showLoginMessage(error.message, true); }
+  }
+}
+
+$('#loginForm').onsubmit = async (event) => {
+  event.preventDefault();
+  if (!db) return;
+  const button = $('#loginBtn');
+  button.disabled = true;
+  showLoginMessage('Проверяем учётную запись…');
+  try {
+    const { data: authData, error } = await db.auth.signInWithPassword({ email: $('#email').value.trim(), password: $('#password').value });
+    if (error) throw error;
+    await openPanel(authData.user);
+  } catch (error) {
+    showLoginMessage(error.message || 'Не удалось войти.', true);
+  } finally {
+    button.disabled = false;
+  }
+};
+
+$('#logoutBtn').onclick = async () => { await db.auth.signOut(); location.reload(); };
+$('#saveBtn').onclick = save;
+
+document.querySelectorAll('aside nav button').forEach((button) => {
+  button.onclick = () => {
+    document.querySelectorAll('aside nav button').forEach((item) => item.classList.remove('active'));
+    button.classList.add('active');
+    tab = button.dataset.tab;
+    render();
+  };
+});
+
+async function save() {
+  if (!db || !currentUser) return;
+  setSavingState('Сохранение…');
+  $('#saveBtn').disabled = true;
+  const rowId = Number(window.SITE_CONFIG.CONTENT_ROW_ID || 1);
+  try {
+    const { error } = await db.from('site_content').upsert({ id: rowId, content: data, updated_by: currentUser.id });
+    if (error) throw error;
+    setSavingState('Данные синхронизированы');
+    toast('Изменения опубликованы для всех посетителей');
+  } catch (error) {
+    setSavingState('Ошибка сохранения');
+    alert(`Не удалось сохранить: ${error.message}`);
+  } finally {
+    $('#saveBtn').disabled = false;
+  }
+}
+
+function field(label, path, value, options = {}) {
+  const { type = 'text', min, max, step, help = '', list = '', placeholder = '' } = options;
+  const attrs = [
+    `data-path="${esc(path)}"`,
+    type === 'number' ? 'data-value-type="number"' : '',
+    min !== undefined ? `min="${min}"` : '',
+    max !== undefined ? `max="${max}"` : '',
+    step !== undefined ? `step="${step}"` : '',
+    list ? `list="${esc(list)}"` : '',
+    placeholder ? `placeholder="${esc(placeholder)}"` : ''
+  ].filter(Boolean).join(' ');
+  const control = type === 'textarea'
+    ? `<textarea ${attrs}>${esc(value)}</textarea>`
+    : `<input type="${type}" ${attrs} value="${esc(value)}">`;
+  return `<label>${label}${control}${help ? `<small class="field-help">${help}</small>` : ''}</label>`;
+}
+
+function colorField(label, path, value) {
+  const color = /^#[0-9a-f]{6}$/i.test(String(value)) ? value : '#000000';
+  return `<label>${label}<div class="color-control"><input type="color" data-path="${esc(path)}" value="${esc(color)}"><code>${esc(color)}</code></div></label>`;
+}
+
+function selectField(label, path, value, options, help = '') {
+  return `<label>${label}<select data-path="${esc(path)}">${options.map(([optionValue, text]) => `<option value="${esc(optionValue)}" ${String(value) === String(optionValue) ? 'selected' : ''}>${esc(text)}</option>`).join('')}</select>${help ? `<small class="field-help">${help}</small>` : ''}</label>`;
+}
+
+function checkboxField(label, path, checked, help = '') {
+  return `<label class="check-field"><input type="checkbox" data-path="${esc(path)}" data-value-type="boolean" ${checked ? 'checked' : ''}><span>${label}${help ? `<small class="field-help">${help}</small>` : ''}</span></label>`;
+}
+
+function bind() {
+  ws.querySelectorAll('[data-path]').forEach((element) => {
+    const eventName = element.type === 'checkbox' || element.tagName === 'SELECT' ? 'change' : 'input';
+    element.addEventListener(eventName, () => {
+      let value = element.type === 'checkbox' ? element.checked : element.value;
+      if (element.dataset.valueType === 'number') value = element.value === '' ? 0 : Number(element.value);
+      setPath(element.dataset.path, value);
+      if (element.type === 'color') element.nextElementSibling.textContent = element.value;
+      if (tab === 'design') refreshDesignPreview();
+      if (tab === 'brand') refreshLogoPreview();
+    });
+  });
+  ws.querySelectorAll('[data-upload]').forEach((input) => { input.onchange = () => uploadToPath(input); });
+  ws.querySelectorAll('[data-clear-path]').forEach((button) => {
+    button.onclick = () => {
+      setPath(button.dataset.clearPath, '');
+      render();
+      toast('Изображение удалено из настроек. Нажмите «Сохранить».');
+    };
+  });
+}
+
+function setPath(path, value) {
+  const parts = path.split('.');
+  let object = data;
+  for (let index = 0; index < parts.length - 1; index += 1) object = object[parts[index]];
+  object[parts.at(-1)] = value;
+  setSavingState('Есть несохранённые изменения');
+}
+
+async function uploadFile(file) {
+  if (!file.type.startsWith('image/')) throw new Error('Разрешены только изображения.');
+  if (file.size > 10 * 1024 * 1024) throw new Error('Максимальный размер изображения — 10 МБ.');
+  const extension = (file.name.split('.').pop() || 'jpg').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+  const unique = window.crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const filePath = `uploads/${new Date().toISOString().slice(0, 10)}/${unique}.${extension}`;
+  const bucket = window.SITE_CONFIG.STORAGE_BUCKET || 'site-images';
+  const { error } = await db.storage.from(bucket).upload(filePath, file, { cacheControl: '31536000', upsert: false, contentType: file.type });
+  if (error) throw error;
+  const { data: publicData } = db.storage.from(bucket).getPublicUrl(filePath);
+  return publicData.publicUrl;
+}
+
+async function uploadToPath(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  input.disabled = true;
+  setSavingState('Загрузка изображения…');
+  try {
+    const url = await uploadFile(file);
+    setPath(input.dataset.upload, url);
+    render();
+    toast('Изображение загружено. Нажмите «Сохранить».');
+  } catch (error) {
+    alert(`Не удалось загрузить изображение: ${error.message}`);
+  } finally {
+    input.disabled = false;
+  }
+}
+
+function render() {
+  const titles = {
+    dashboard: 'Обзор', brand: 'Основное и логотипы', design: 'Дизайн и шрифты', albums: 'Альбомы',
+    process: 'Этапы работы', faq: 'Частые вопросы', reviews: 'Отзывы', data: 'Резервная копия'
+  };
+  $('#pageTitle').textContent = titles[tab];
+  if (tab === 'dashboard') dashboard();
+  if (tab === 'brand') brand();
+  if (tab === 'design') designEditor();
+  if (tab === 'albums') albums();
+  if (tab === 'process') repeatEditor('process');
+  if (tab === 'faq') repeatEditor('faq');
+  if (tab === 'reviews') repeatEditor('reviews');
+  if (tab === 'data') dataTools();
+  bind();
+  if (tab === 'design') refreshDesignPreview();
+  if (tab === 'brand') refreshLogoPreview();
+}
+
+async function dashboard() {
+  ws.innerHTML = '<div class="notice">Загружаем общую статистику сайта…</div>';
+  const { data: stats, error } = await db.rpc('get_site_stats');
+  if (error) {
+    ws.innerHTML = `<div class="notice">Не удалось получить статистику: ${esc(error.message)}</div>`;
+    return;
+  }
+  const events = Object.entries(stats.by_event || {}).sort((a, b) => Number(b[1]) - Number(a[1]));
+  ws.innerHTML = `
+    <div class="notice">Это общая статистика со всех устройств. Для расширенных отчётов используйте Яндекс Метрику.</div>
+    <div class="stats">
+      <div class="stat"><b>${stats.pageviews || 0}</b><span>Просмотров сайта</span></div>
+      <div class="stat"><b>${stats.events_total || 0}</b><span>Всего событий</span></div>
+      <div class="stat"><b>${stats.vk_click || 0}</b><span>Переходов во VK</span></div>
+      <div class="stat"><b>${stats.photo_open || 0}</b><span>Открытий фотографий</span></div>
+    </div>
+    <div class="card"><h3>События</h3><div class="event-list">${events.length
+      ? events.map(([name, count]) => `<div class="event-row"><span>${esc(name)}</span><b>${count}</b></div>`).join('')
+      : '<p>Пока нет данных.</p>'}</div></div>`;
+}
+
+function imageEditor(title, path, value, hint, compact = false) {
+  const src = assetUrl(value);
+  return `<div class="logo-editor ${compact ? 'compact' : ''}">
+    <h4>${title}</h4>
+    <div class="logo-preview ${value ? '' : 'empty'}">${value ? `<img src="${esc(src)}" alt="${esc(title)}">` : '<span>Изображение не загружено</span>'}</div>
+    <div class="inline-actions"><label class="upload-btn">${value ? 'Заменить' : 'Загрузить'}<input type="file" accept="image/png,image/jpeg,image/webp,image/avif,image/gif" data-upload="${path}"></label>${value ? `<button type="button" class="danger small" data-clear-path="${path}">Убрать</button>` : ''}</div>
+    <small class="field-help">${hint}</small>
+  </div>`;
+}
+
+function brand() {
+  ws.innerHTML = `
+    <div class="card"><h3>Бренд и контакты</h3><div class="grid">
+      ${field('Название', 'brand.name', data.brand.name)}
+      ${field('Подпись бренда', 'brand.tagline', data.brand.tagline)}
+      ${field('Город', 'brand.city', data.brand.city)}
+      ${field('Ссылка VK', 'brand.vk', data.brand.vk, { type: 'url' })}
+      ${field('Телефон', 'brand.phone', data.brand.phone)}
+      ${field('Текст в круглом знаке', 'brand.logo.mark', data.brand.logo.mark, { help: 'Используется, когда графический логотип не загружен.' })}
+      ${field('Описание логотипа', 'brand.logo.alt', data.brand.logo.alt, { help: 'Текст для поисковых систем и программ чтения с экрана.' })}
+    </div><div class="check-row">${checkboxField('Показывать название рядом с логотипом', 'brand.logo.showName', data.brand.logo.showName)}${checkboxField('Показывать подпись или город', 'brand.logo.showTagline', data.brand.logo.showTagline)}</div></div>
+    <div class="card"><h3>Логотипы и значок сайта</h3><div class="logo-grid">
+      ${imageEditor('Логотип в шапке', 'brand.logo.header', data.brand.logo.header, 'Рекомендуется PNG или WebP с прозрачным фоном. Оптимальная ширина 400–1000 px.')}
+      ${imageEditor('Логотип в подвале', 'brand.logo.footer', data.brand.logo.footer, 'Если не загрузить, будет использован логотип из шапки.')}
+      ${imageEditor('Favicon', 'brand.logo.favicon', data.brand.logo.favicon, 'Квадратное изображение 256×256 или 512×512 px.', true)}
+    </div><div id="logoLivePreview" class="logo-live-preview"></div></div>
+    <div class="card"><h3>Первый экран</h3><div class="grid">
+      ${field('Надзаголовок', 'hero.eyebrow', data.hero.eyebrow)}
+      ${field('Заголовок', 'hero.title', data.hero.title)}
+      ${field('Описание', 'hero.text', data.hero.text, { type: 'textarea' })}
+      <label>Главное изображение<div class="preview"><img src="${esc(assetUrl(data.hero.image))}"></div><span class="upload-btn">Заменить<input type="file" accept="image/*" data-upload="hero.image"></span></label>
+    </div></div>`;
+}
+
+function refreshLogoPreview() {
+  const node = $('#logoLivePreview');
+  if (!node) return;
+  const logo = data.brand.logo;
+  const headerUrl = assetUrl(logo.header);
+  node.innerHTML = `<div class="logo-preview-line">${headerUrl ? `<img src="${esc(headerUrl)}" alt="">` : `<span class="logo-mark-demo">${esc(logo.mark || 'НГ')}</span>`}<span class="logo-copy-demo">${logo.showName ? `<b>${esc(data.brand.name)}</b>` : ''}${logo.showTagline ? `<small>${esc(data.brand.tagline)}</small>` : ''}</span></div>`;
+}
+
+function designEditor() {
+  const d = data.design;
+  const weights = [[100, '100 — тонкий'], [200, '200'], [300, '300 — лёгкий'], [400, '400 — обычный'], [500, '500'], [600, '600'], [700, '700 — жирный'], [800, '800'], [900, '900 — максимально жирный']];
+  ws.innerHTML = `
+    <div class="notice">Настройки применяются ко всему публичному сайту после нажатия «Сохранить». Для нестандартного шрифта вставьте URL CSS-файла шрифта и укажите его точное семейство.</div>
+    <div class="card"><h3>Типы шрифтов</h3><div class="grid">
+      ${field('CSS-ссылка на внешний шрифт', 'design.fonts.stylesheetUrl', d.fonts.stylesheetUrl, { type: 'url', placeholder: 'https://fonts.googleapis.com/css2?...', help: 'Необязательно. Поддерживается Google Fonts и другой HTTPS CDN.' })}
+      ${field('Основной текст', 'design.fonts.body', d.fonts.body, { list: 'fontPresets', help: 'Например: Arial, Helvetica, sans-serif' })}
+      ${field('Заголовки', 'design.fonts.heading', d.fonts.heading, { list: 'fontPresets' })}
+      ${field('Меню, кнопки и интерфейс', 'design.fonts.interface', d.fonts.interface, { list: 'fontPresets' })}
+      ${field('Название бренда и знак', 'design.fonts.brand', d.fonts.brand, { list: 'fontPresets' })}
+    </div></div>
+    <div class="card"><h3>Размеры текста</h3><div class="grid three">
+      ${field('Основной текст, px', 'design.typography.baseSize', d.typography.baseSize, { type: 'number', min: 10, max: 28, step: 1 })}
+      ${field('Навигация, px', 'design.typography.navSize', d.typography.navSize, { type: 'number', min: 8, max: 30, step: 1 })}
+      ${field('Кнопки, px', 'design.typography.buttonSize', d.typography.buttonSize, { type: 'number', min: 8, max: 32, step: 1 })}
+      ${field('Надзаголовки, px', 'design.typography.eyebrowSize', d.typography.eyebrowSize, { type: 'number', min: 7, max: 28, step: 1 })}
+      ${field('Главный заголовок, px', 'design.typography.heroTitleSize', d.typography.heroTitleSize, { type: 'number', min: 36, max: 180, step: 1 })}
+      ${field('Текст первого экрана, px', 'design.typography.heroTextSize', d.typography.heroTextSize, { type: 'number', min: 12, max: 40, step: 1 })}
+      ${field('Заголовки разделов, px', 'design.typography.sectionTitleSize', d.typography.sectionTitleSize, { type: 'number', min: 30, max: 140, step: 1 })}
+      ${field('Названия альбомов, px', 'design.typography.albumTitleSize', d.typography.albumTitleSize, { type: 'number', min: 18, max: 70, step: 1 })}
+      ${field('Текст карточек, px', 'design.typography.cardTextSize', d.typography.cardTextSize, { type: 'number', min: 10, max: 32, step: 1 })}
+      ${field('Вопросы FAQ, px', 'design.typography.faqSize', d.typography.faqSize, { type: 'number', min: 14, max: 54, step: 1 })}
+      ${field('Цена, px', 'design.typography.priceSize', d.typography.priceSize, { type: 'number', min: 10, max: 40, step: 1 })}
+      ${field('Название бренда, px', 'design.typography.brandNameSize', d.typography.brandNameSize, { type: 'number', min: 8, max: 34, step: 1 })}
+      ${field('Подпись бренда, px', 'design.typography.brandTaglineSize', d.typography.brandTaglineSize, { type: 'number', min: 6, max: 24, step: 1 })}
+      ${field('Заголовки этапов, px', 'design.typography.processTitleSize', d.typography.processTitleSize, { type: 'number', min: 14, max: 60, step: 1 })}
+      ${field('Текст отзывов, px', 'design.typography.reviewTextSize', d.typography.reviewTextSize, { type: 'number', min: 12, max: 48, step: 1 })}
+      ${field('Заголовки блоков родителей/учителей, px', 'design.typography.audienceTitleSize', d.typography.audienceTitleSize, { type: 'number', min: 24, max: 110, step: 1 })}
+      ${field('Подвал сайта, px', 'design.typography.footerSize', d.typography.footerSize, { type: 'number', min: 8, max: 28, step: 1 })}
+      ${field('Бегущая строка, px', 'design.typography.tickerSize', d.typography.tickerSize, { type: 'number', min: 7, max: 24, step: 1 })}
+      ${field('Подпись первого экрана, px', 'design.typography.heroNoteSize', d.typography.heroNoteSize, { type: 'number', min: 8, max: 28, step: 1 })}
+      ${field('Заголовок плавающей карточки, px', 'design.typography.floatingTitleSize', d.typography.floatingTitleSize, { type: 'number', min: 14, max: 46, step: 1 })}
+      ${field('Подписи фотографий, px', 'design.typography.portfolioLabelSize', d.typography.portfolioLabelSize, { type: 'number', min: 8, max: 28, step: 1 })}
+      ${field('Характеристики альбомов, px', 'design.typography.detailSize', d.typography.detailSize, { type: 'number', min: 9, max: 28, step: 1 })}
+    </div></div>
+    <div class="card"><h3>Начертание и интервалы</h3><div class="grid three">
+      ${selectField('Толщина основного текста', 'design.typography.bodyWeight', d.typography.bodyWeight, weights)}
+      ${selectField('Толщина заголовков', 'design.typography.headingWeight', d.typography.headingWeight, weights)}
+      ${selectField('Толщина кнопок и меню', 'design.typography.interfaceWeight', d.typography.interfaceWeight, weights)}
+      ${selectField('Толщина названия бренда', 'design.typography.brandWeight', d.typography.brandWeight, weights)}
+      ${selectField('Стиль заголовков', 'design.typography.headingStyle', d.typography.headingStyle, [['normal', 'Обычный'], ['italic', 'Курсив']])}
+      ${selectField('Регистр заголовков', 'design.typography.headingTransform', d.typography.headingTransform, [['none', 'Как введено'], ['uppercase', 'ПРОПИСНЫЕ'], ['lowercase', 'строчные'], ['capitalize', 'Каждое Слово']])}
+      ${field('Межстрочный интервал текста', 'design.typography.bodyLineHeight', d.typography.bodyLineHeight, { type: 'number', min: .8, max: 3, step: .05 })}
+      ${field('Межстрочный интервал заголовков', 'design.typography.headingLineHeight', d.typography.headingLineHeight, { type: 'number', min: .7, max: 2, step: .01 })}
+      ${field('Разрядка текста, em', 'design.typography.bodyLetterSpacing', d.typography.bodyLetterSpacing, { type: 'number', min: -.2, max: .5, step: .005 })}
+      ${field('Разрядка заголовков, em', 'design.typography.headingLetterSpacing', d.typography.headingLetterSpacing, { type: 'number', min: -.2, max: .5, step: .005 })}
+      ${field('Разрядка надзаголовков, em', 'design.typography.eyebrowLetterSpacing', d.typography.eyebrowLetterSpacing, { type: 'number', min: 0, max: .8, step: .01 })}
+    </div></div>
+    <div class="card"><h3>Цветовая палитра</h3><div class="grid three">
+      ${colorField('Фон сайта', 'design.colors.background', d.colors.background)}
+      ${colorField('Основной текст', 'design.colors.text', d.colors.text)}
+      ${colorField('Вторичный текст', 'design.colors.muted', d.colors.muted)}
+      ${colorField('Акцент', 'design.colors.accent', d.colors.accent)}
+      ${colorField('Тёмный акцент', 'design.colors.accentDark', d.colors.accentDark)}
+      ${colorField('Тёмные секции', 'design.colors.dark', d.colors.dark)}
+      ${colorField('Текст на тёмном фоне', 'design.colors.darkText', d.colors.darkText)}
+      ${colorField('Карточки', 'design.colors.surface', d.colors.surface)}
+      ${colorField('Линии и границы', 'design.colors.border', d.colors.border)}
+      ${colorField('Фон блока для родителей', 'design.colors.audience', d.colors.audience)}
+      ${colorField('Фон буквенного логотипа', 'design.colors.logoBackground', d.colors.logoBackground)}
+      ${colorField('Текст буквенного логотипа', 'design.colors.logoText', d.colors.logoText)}
+    </div></div>
+    <div class="card"><h3>Форма и компоновка</h3><div class="grid three">
+      ${field('Высота шапки, px', 'design.layout.headerHeight', d.layout.headerHeight, { type: 'number', min: 56, max: 150, step: 1 })}
+      ${field('Вертикальные отступы разделов, px', 'design.layout.sectionSpacing', d.layout.sectionSpacing, { type: 'number', min: 30, max: 240, step: 1 })}
+      ${field('Боковые поля, px', 'design.layout.contentSidePadding', d.layout.contentSidePadding, { type: 'number', min: 16, max: 180, step: 1 })}
+      ${field('Скругление кнопок, px', 'design.layout.buttonRadius', d.layout.buttonRadius, { type: 'number', min: 0, max: 999, step: 1 })}
+      ${field('Скругление карточек, px', 'design.layout.cardRadius', d.layout.cardRadius, { type: 'number', min: 0, max: 80, step: 1 })}
+      ${field('Скругление фотографий, px', 'design.layout.imageRadius', d.layout.imageRadius, { type: 'number', min: 0, max: 100, step: 1 })}
+      ${field('Размер буквенного знака, px', 'design.layout.logoMarkSize', d.layout.logoMarkSize, { type: 'number', min: 24, max: 100, step: 1 })}
+      ${field('Ширина графического логотипа, px', 'design.layout.logoImageWidth', d.layout.logoImageWidth, { type: 'number', min: 50, max: 420, step: 1 })}
+      ${field('Прозрачность шапки', 'design.layout.headerOpacity', d.layout.headerOpacity, { type: 'number', min: 0, max: 1, step: .01 })}
+      ${field('Размытие фона шапки, px', 'design.layout.headerBlur', d.layout.headerBlur, { type: 'number', min: 0, max: 50, step: 1 })}
+    </div></div>
+    <div class="card"><div class="card-title-row"><h3>Предварительный просмотр</h3><a href="../" target="_blank" class="secondary link-button">Открыть полный сайт ↗</a></div><div id="designPreview" class="design-preview"><p class="preview-eyebrow">Премиальная школьная фотография</p><h4>История класса остаётся навсегда</h4><p>Пример основного текста, карточки и акцентной кнопки.</p><button>Выбрать альбом</button></div></div>`;
+}
+
+function refreshDesignPreview() {
+  const node = $('#designPreview');
+  if (!node) return;
+  const d = data.design;
+  const fontLink = $('#adminCustomFontStylesheet');
+  const fontUrl = String(d.fonts.stylesheetUrl || '').trim();
+  if (/^https:\/\//i.test(fontUrl)) {
+    fontLink.href = fontUrl;
+    fontLink.disabled = false;
+  } else {
+    fontLink.removeAttribute('href');
+    fontLink.disabled = true;
+  }
+  node.style.setProperty('--p-body', d.fonts.body);
+  node.style.setProperty('--p-heading', d.fonts.heading);
+  node.style.setProperty('--p-ui', d.fonts.interface);
+  node.style.setProperty('--p-bg', d.colors.background);
+  node.style.setProperty('--p-text', d.colors.text);
+  node.style.setProperty('--p-muted', d.colors.muted);
+  node.style.setProperty('--p-accent', d.colors.accent);
+  node.style.setProperty('--p-surface', d.colors.surface);
+  node.style.setProperty('--p-radius', `${d.layout.cardRadius}px`);
+  node.style.setProperty('--p-button-radius', `${d.layout.buttonRadius}px`);
+  node.style.setProperty('--p-title-size', `${Math.min(Number(d.typography.sectionTitleSize) || 60, 72)}px`);
+  node.style.setProperty('--p-body-size', `${d.typography.baseSize}px`);
+  node.style.setProperty('--p-weight', d.typography.headingWeight);
+  node.style.setProperty('--p-letter', `${d.typography.headingLetterSpacing}em`);
+  node.style.setProperty('--p-line', d.typography.headingLineHeight);
+  node.style.setProperty('--p-style', d.typography.headingStyle);
+  node.style.setProperty('--p-transform', d.typography.headingTransform);
+}
+
+function albums() {
+  ws.innerHTML = data.albums.map((album, albumIndex) => `
+    <div class="card"><h3>${esc(album.name)}</h3><div class="album-editor">
+      <div><div class="preview"><img src="${esc(assetUrl(album.cover))}"></div><label class="upload-btn">Заменить обложку<input type="file" accept="image/*" data-upload="albums.${albumIndex}.cover"></label></div>
+      <div><div class="grid">
+        ${field('Название', `albums.${albumIndex}.name`, album.name)}
+        ${field('Цена', `albums.${albumIndex}.price`, album.price)}
+        ${field('Метка', `albums.${albumIndex}.badge`, album.badge)}
+        ${field('Короткое описание', `albums.${albumIndex}.lead`, album.lead, { type: 'textarea' })}
+      </div>
+      <h4>Характеристики</h4>
+      ${album.details.map((detail, detailIndex) => field(`Строка ${detailIndex + 1}`, `albums.${albumIndex}.details.${detailIndex}`, detail)).join('')}
+      <h4>Галерея</h4>
+      <div class="gallery-grid">${album.gallery.map((image, imageIndex) => `<div class="gallery-item"><img src="${esc(assetUrl(image))}"><button data-remove-gallery="${albumIndex}.${imageIndex}">×</button></div>`).join('')}</div>
+      <label class="upload-btn">Добавить фото<input type="file" accept="image/*" data-gallery-add="${albumIndex}"></label>
+      </div></div></div>`).join('');
+
+  ws.querySelectorAll('[data-remove-gallery]').forEach((button) => {
+    button.onclick = () => {
+      const [albumIndex, imageIndex] = button.dataset.removeGallery.split('.').map(Number);
+      data.albums[albumIndex].gallery.splice(imageIndex, 1);
+      setSavingState('Есть несохранённые изменения');
+      render();
+    };
+  });
+  ws.querySelectorAll('[data-gallery-add]').forEach((input) => {
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      input.disabled = true;
+      setSavingState('Загрузка фотографии…');
+      try {
+        const url = await uploadFile(file);
+        data.albums[Number(input.dataset.galleryAdd)].gallery.push(url);
+        setSavingState('Есть несохранённые изменения');
+        render();
+        toast('Фотография добавлена. Нажмите «Сохранить».');
+      } catch (error) { alert(`Не удалось загрузить изображение: ${error.message}`); }
+      finally { input.disabled = false; }
+    };
+  });
+}
+
+function repeatEditor(kind) {
+  const config = {
+    process: { title: 'Этапы', first: 'title', second: 'text' },
+    faq: { title: 'Вопросы и ответы', first: 'q', second: 'a' },
+    reviews: { title: 'Отзывы', first: 'name', second: 'text' }
+  }[kind];
+  ws.innerHTML = `<div class="card"><h3>${config.title}</h3>${data[kind].map((item, index) => `
+    <div class="repeat"><div class="grid">
+      ${field(kind === 'faq' ? 'Вопрос' : kind === 'reviews' ? 'Автор' : 'Название', `${kind}.${index}.${config.first}`, item[config.first])}
+      ${field(kind === 'faq' ? 'Ответ' : kind === 'reviews' ? 'Текст отзыва' : 'Описание', `${kind}.${index}.${config.second}`, item[config.second], { type: 'textarea' })}
+    </div><div class="row-actions"><button class="danger" data-remove="${index}">Удалить</button></div></div>`).join('')}
+    <button id="addItem" class="secondary">Добавить</button></div>`;
+  ws.querySelectorAll('[data-remove]').forEach((button) => {
+    button.onclick = () => { data[kind].splice(Number(button.dataset.remove), 1); setSavingState('Есть несохранённые изменения'); render(); };
+  });
+  $('#addItem').onclick = () => {
+    data[kind].push(kind === 'faq' ? { q: 'Новый вопрос', a: 'Ответ' } : kind === 'reviews' ? { name: 'Имя', text: 'Текст отзыва' } : { title: 'Новый этап', text: 'Описание' });
+    setSavingState('Есть несохранённые изменения');
+    render();
+  };
+}
+
+function dataTools() {
+  ws.innerHTML = `
+    <div class="notice">Экспорт сохраняет тексты, настройки дизайна и ссылки на изображения. Сами файлы продолжают храниться в Supabase Storage.</div>
+    <div class="card"><h3>Управление данными</h3><div class="data-actions">
+      <button id="exportBtn">Экспортировать JSON</button>
+      <label class="secondary">Импортировать JSON<input id="importInput" type="file" accept="application/json" hidden></label>
+      <button id="resetStats">Очистить базовую статистику</button>
+      <button id="resetDesign">Вернуть стандартный дизайн</button>
+      <button id="resetAll" class="danger">Вернуть весь тестовый контент</button>
+    </div></div>`;
+  $('#exportBtn').onclick = () => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const anchor = document.createElement('a');
+    anchor.href = URL.createObjectURL(blob);
+    anchor.download = 'school-album-content.json';
+    anchor.click();
+    URL.revokeObjectURL(anchor.href);
+  };
+  $('#importInput').onchange = (event) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        data = mergeDefaults(window.DEFAULT_CONTENT, JSON.parse(reader.result));
+        setSavingState('Импортирован контент — нажмите «Сохранить»');
+        render();
+      } catch { alert('Некорректный JSON-файл.'); }
+    };
+    reader.readAsText(event.target.files[0]);
+  };
+  $('#resetStats').onclick = async () => {
+    if (!confirm('Удалить всю базовую статистику сайта?')) return;
+    const { error } = await db.from('site_events').delete().gte('id', 0);
+    if (error) alert(`Не удалось очистить статистику: ${error.message}`);
+    else { toast('Статистика очищена'); render(); }
+  };
+  $('#resetDesign').onclick = () => {
+    if (!confirm('Вернуть стандартные шрифты, цвета и размеры? Контент и фотографии останутся без изменений.')) return;
+    data.design = clone(window.DEFAULT_CONTENT.design);
+    setSavingState('Стандартный дизайн восстановлен — нажмите «Сохранить»');
+    render();
+  };
+  $('#resetAll').onclick = () => {
+    if (!confirm('Вернуть все тестовые тексты, настройки и тестовые изображения?')) return;
+    data = clone(window.DEFAULT_CONTENT);
+    setSavingState('Тестовый контент восстановлен — нажмите «Сохранить»');
+    render();
+  };
+}
+
+initialize().catch((error) => showLoginMessage(error.message || 'Ошибка инициализации.', true));
