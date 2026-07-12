@@ -324,3 +324,43 @@ footer .brand-logo { max-height: 56px; }
   footer { padding: 34px 20px; }
   .ticker div { font-size: min(var(--ticker-size), 9px); }
 }
+
+/* Направления: школа и детский сад */
+.site-header nav { gap: clamp(12px, 1.7vw, 28px); }
+.site-header nav a.active { color: var(--color-accent-dark); }
+.site-header nav a.active::after { right: 0; background: var(--color-accent-dark); }
+
+.landing-hero { padding: 76px clamp(20px, 6vw, var(--side-padding)) var(--section-spacing); }
+.landing-intro { max-width: 1040px; margin-bottom: 64px; }
+.landing-intro h1 { max-width: 980px; margin: 10px 0 24px; font-size: clamp(54px, 7vw, var(--hero-title-size)); }
+.landing-intro > p:last-child { max-width: 720px; margin: 0; color: var(--color-muted); font-size: var(--hero-text-size); }
+.direction-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.direction-card { overflow: hidden; display: grid; grid-template-rows: minmax(320px, 52vh) auto; background: var(--color-surface); border-radius: calc(var(--card-radius) + 8px); box-shadow: 0 24px 70px rgba(23,33,43,.08); }
+.direction-card-accent { background: color-mix(in srgb, var(--color-audience) 55%, var(--color-surface)); }
+.direction-image { overflow: hidden; }
+.direction-image img { height: 100%; object-fit: cover; transition: transform .65s ease; }
+.direction-card:hover .direction-image img { transform: scale(1.035); }
+.direction-copy { padding: 36px; }
+.direction-copy h2 { margin: 8px 0 16px; font-size: clamp(34px, 4vw, 58px); }
+.direction-copy > p:not(.eyebrow) { min-height: 58px; margin: 0 0 28px; color: var(--color-muted); }
+.direction-copy .btn { min-width: 230px; }
+.landing-cta { margin-top: 0; }
+
+@media (max-width: 1180px) {
+  .site-header nav a:nth-last-child(-n+4) { display: none; }
+}
+@media (max-width: 980px) {
+  .site-header nav a:nth-last-child(-n+4) { display: block; }
+  .direction-grid { grid-template-columns: 1fr; }
+  .direction-card { grid-template-rows: minmax(300px, 50vh) auto; }
+}
+@media (max-width: 620px) {
+  .landing-hero { padding: 42px 16px 72px; }
+  .landing-intro { margin-bottom: 38px; }
+  .landing-intro h1 { font-size: 46px; }
+  .direction-card { grid-template-rows: 300px auto; border-radius: var(--card-radius); }
+  .direction-copy { padding: 26px 22px 30px; }
+  .direction-copy h2 { font-size: 38px; }
+  .direction-copy > p:not(.eyebrow) { min-height: auto; }
+  .direction-copy .btn { width: 100%; min-width: 0; }
+}

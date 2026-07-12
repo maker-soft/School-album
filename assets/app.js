@@ -35,6 +35,30 @@ function initSupabase() {
   );
 }
 
+
+function adaptLegacyContent(storedContent) {
+  const stored = clone(storedContent || {});
+  if (!stored.pages) stored.pages = {};
+  if (!stored.pages.school && (stored.hero || stored.albums || stored.process || stored.faq || stored.reviews)) {
+    const school = clone(window.DEFAULT_CONTENT.pages.school);
+    if (stored.hero) school.hero = mergeDefaults(school.hero, stored.hero);
+    if (Array.isArray(stored.albums)) school.albums = clone(stored.albums);
+    if (Array.isArray(stored.process)) school.process = clone(stored.process);
+    if (Array.isArray(stored.faq)) school.faq = clone(stored.faq);
+    if (Array.isArray(stored.reviews)) school.reviews = clone(stored.reviews);
+    if (Array.isArray(stored.albums)) {
+      school.portfolio = stored.albums.flatMap((album) =>
+        (album.gallery || []).map((image, index) => ({
+          image,
+          label: `${album.name || 'Альбом'} · ${String(index + 1).padStart(2, '0')}`
+        }))
+      );
+    }
+    stored.pages.school = school;
+  }
+  return stored;
+}
+
 function initMetrika() {
   const id = Number(window.SITE_CONFIG?.YANDEX_METRIKA_ID || 0);
   if (!id) return;
@@ -55,7 +79,7 @@ async function loadContent() {
     console.error('Не удалось загрузить контент из Supabase:', error.message);
     return;
   }
-  if (data?.content) content = mergeDefaults(window.DEFAULT_CONTENT, data.content);
+  if (data?.content) content = mergeDefaults(window.DEFAULT_CONTENT, adaptLegacyContent(data.content));
 }
 
 function track(eventName, albumId = null) {
@@ -166,11 +190,25 @@ function applyTheme() {
   }
 }
 
+
+function node(id) { return document.getElementById(id); }
+
+function setText(id, value) {
+  const element = node(id);
+  if (element) element.textContent = value ?? '';
+}
+
+function setMultiline(id, value) {
+  const element = node(id);
+  if (element) element.innerHTML = esc(value ?? '').replace(/\n/g, '<br>');
+}
+
 function configureLogo(imageId, markId, copyId, imageUrl, fallbackImage = '') {
   const logo = content.brand.logo || {};
-  const image = document.getElementById(imageId);
-  const mark = document.getElementById(markId);
-  const copy = document.getElementById(copyId);
+  const image = node(imageId);
+  const mark = node(markId);
+  const copy = node(copyId);
+  if (!image || !mark || !copy) return;
   const finalUrl = String(imageUrl || fallbackImage || '').trim();
   image.alt = logo.alt || content.brand.name;
   if (finalUrl) {
@@ -186,49 +224,140 @@ function configureLogo(imageId, markId, copyId, imageUrl, fallbackImage = '') {
   copy.hidden = logo.showName === false && logo.showTagline === false;
 }
 
-function render() {
+function renderCommon(pageData = null) {
   applyTheme();
   const logo = content.brand.logo || {};
-  document.title = `${content.brand.name} — школьные фотокниги`;
-  $('#brandName').textContent = $('#footerBrand').textContent = content.brand.name;
-  $('#brandTagline').textContent = content.brand.tagline;
-  $('#footerCity').textContent = content.brand.city;
-  $('#brandName').hidden = logo.showName === false;
-  $('#footerBrand').hidden = logo.showName === false;
-  $('#brandTagline').hidden = logo.showTagline === false;
-  $('#footerCity').hidden = logo.showTagline === false;
+  setText('brandName', content.brand.name);
+  setText('footerBrand', content.brand.name);
+  setText('brandTagline', content.brand.tagline);
+  setText('footerCity', content.brand.city);
+  if (node('brandName')) node('brandName').hidden = logo.showName === false;
+  if (node('footerBrand')) node('footerBrand').hidden = logo.showName === false;
+  if (node('brandTagline')) node('brandTagline').hidden = logo.showTagline === false;
+  if (node('footerCity')) node('footerCity').hidden = logo.showTagline === false;
   configureLogo('headerLogo', 'headerMark', 'headerBrandCopy', logo.header);
   configureLogo('footerLogo', 'footerMark', 'footerBrandCopy', logo.footer, logo.header);
-  if (logo.favicon) $('#siteFavicon').href = logo.favicon;
+  if (logo.favicon && node('siteFavicon')) node('siteFavicon').href = logo.favicon;
 
-  ['headerVk', 'heroVk', 'footerVk', 'footerVk2'].forEach((id) => {
-    const element = document.getElementById(id);
+  const nav = content.global.navigation;
+  setText('navHome', nav.home);
+  setText('navSchool', nav.school);
+  setText('navKindergarten', nav.kindergarten);
+  setText('navAlbums', nav.albums);
+  setText('navPortfolio', nav.portfolio);
+  setText('navProcess', nav.process);
+  setText('navFaq', nav.faq);
+  setText('headerVk', nav.discuss);
+  setText('footerVk2', content.global.footer.vkLabel);
+
+  ['headerVk', 'heroVk', 'footerVk', 'footerVk2', 'landingCtaButton'].forEach((id) => {
+    const element = node(id);
+    if (!element) return;
     element.href = content.brand.vk;
     element.onclick = () => track('vk_click');
   });
 
-  $('#heroEyebrow').textContent = content.hero.eyebrow;
-  $('#heroTitle').textContent = content.hero.title;
-  $('#heroText').textContent = content.hero.text;
-  $('#heroImage').src = content.hero.image;
+  setText('footerDescription', pageData?.footerDescription || content.global.footer.description);
 
-  $('#albumGrid').innerHTML = content.albums.map((album) => `
+  const menuButton = document.querySelector('.menu-btn');
+  if (menuButton) menuButton.onclick = () => document.querySelector('.site-header')?.classList.toggle('menu-open');
+}
+
+function renderLanding() {
+  const page = content.landing;
+  renderCommon();
+  document.title = page.seoTitle;
+  if (node('metaDescription')) node('metaDescription').content = page.seoDescription;
+
+  setText('landingEyebrow', page.eyebrow);
+  setMultiline('landingTitle', page.title);
+  setText('landingText', page.text);
+
+  const cards = [
+    ['School', page.schoolCard],
+    ['Kindergarten', page.kindergartenCard]
+  ];
+  cards.forEach(([suffix, card]) => {
+    setText(`landing${suffix}Label`, card.label);
+    setMultiline(`landing${suffix}Title`, card.title);
+    setText(`landing${suffix}Text`, card.text);
+    setText(`landing${suffix}Button`, card.button);
+    const image = node(`landing${suffix}Image`);
+    if (image) image.src = card.image;
+  });
+
+  setText('landingCtaEyebrow', page.ctaEyebrow);
+  setMultiline('landingCtaTitle', page.ctaTitle);
+  setText('landingCtaButton', page.ctaButton);
+}
+
+function renderDirection(direction) {
+  const page = content.pages[direction];
+  renderCommon(page);
+  document.title = page.seoTitle;
+  if (node('metaDescription')) node('metaDescription').content = page.seoDescription;
+
+  const active = node(direction === 'school' ? 'navSchool' : 'navKindergarten');
+  if (active) active.classList.add('active');
+
+  setText('heroEyebrow', page.hero.eyebrow);
+  setMultiline('heroTitle', page.hero.title);
+  setText('heroText', page.hero.text);
+  setText('heroVk', page.hero.primaryButton);
+  setText('heroSecondary', page.hero.secondaryButton);
+  setText('heroNoteNumber', page.hero.noteNumber);
+  setMultiline('heroNoteText', page.hero.noteText);
+  setText('floatingTitle', page.hero.floatingTitle);
+  setText('floatingText', page.hero.floatingText);
+  if (node('heroImage')) node('heroImage').src = page.hero.image;
+  setText('tickerText', `${page.ticker} · ${page.ticker} · ${page.ticker}`);
+
+  const sectionMap = ['albums','portfolio','process','reviews','faq'];
+  sectionMap.forEach((key) => {
+    const section = page.sections[key];
+    setText(`${key}Eyebrow`, section.eyebrow);
+    setMultiline(`${key}Title`, section.title);
+    if ('intro' in section) setText(`${key}Intro`, section.intro);
+  });
+
+  setText('parentsEyebrow', page.audience.parents.eyebrow);
+  setMultiline('parentsTitle', page.audience.parents.title);
+  setText('parentsText', page.audience.parents.text);
+  setText('teachersEyebrow', page.audience.teachers.eyebrow);
+  setMultiline('teachersTitle', page.audience.teachers.title);
+  setText('teachersText', page.audience.teachers.text);
+
+  setText('ctaEyebrow', page.cta.eyebrow);
+  setMultiline('ctaTitle', page.cta.title);
+  setText('footerVk', page.cta.button);
+
+  const albumGrid = node('albumGrid');
+  albumGrid.innerHTML = page.albums.map((album) => `
     <article class="album-card">
       <div class="album-media"><img src="${esc(album.cover)}" alt="Альбом ${esc(album.name)}"><span class="badge">${esc(album.badge)}</span></div>
       <div class="album-body">
         <div class="album-title-row"><h3>${esc(album.name)}</h3><span class="price">${esc(album.price)}</span></div>
         <p>${esc(album.lead)}</p>
-        <ul class="album-details">${album.details.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>
-        <a class="btn album-order" href="${esc(content.brand.vk)}" target="_blank" rel="noopener" data-album="${esc(album.id)}">Выбрать этот альбом</a>
+        <ul class="album-details">${(album.details || []).map((item) => `<li>${esc(item)}</li>`).join('')}</ul>
+        <a class="btn album-order" href="${esc(content.brand.vk)}" target="_blank" rel="noopener" data-album="${esc(album.id)}">${esc(page.hero.primaryButton)}</a>
       </div>
     </article>`).join('');
-  document.querySelectorAll('.album-order').forEach((element) => element.addEventListener('click', () => track('album_order', element.dataset.album)));
+  document.querySelectorAll('.album-order').forEach((element) =>
+    element.addEventListener('click', () => track('album_order', `${direction}:${element.dataset.album}`))
+  );
 
-  const images = content.albums.flatMap((album) => album.gallery.map((src, index) => ({ src, label: `${album.name} · ${String(index + 1).padStart(2, '0')}` })));
-  $('#portfolioRail').innerHTML = images.map((image) => `<figure class="portfolio-item"><img src="${esc(image.src)}" alt="${esc(image.label)}"><span>${esc(image.label)}</span></figure>`).join('');
-  $('#processGrid').innerHTML = content.process.map((item, index) => `<article class="process-card"><span class="process-num">${String(index + 1).padStart(2, '0')}</span><h3>${esc(item.title)}</h3><p>${esc(item.text)}</p></article>`).join('');
-  $('#reviewsGrid').innerHTML = content.reviews.map((review) => `<article class="review-card"><span class="quote">“</span><p>${esc(review.text)}</p><small>${esc(review.name)}</small></article>`).join('');
-  $('#faqList').innerHTML = content.faq.map((item) => `<div class="faq-item"><button class="faq-question" aria-expanded="false">${esc(item.q)}<span>+</span></button><div class="faq-answer">${esc(item.a)}</div></div>`).join('');
+  node('portfolioRail').innerHTML = page.portfolio.map((item) =>
+    `<figure class="portfolio-item"><img src="${esc(item.image)}" alt="${esc(item.label)}"><span>${esc(item.label)}</span></figure>`
+  ).join('');
+  node('processGrid').innerHTML = page.process.map((item, index) =>
+    `<article class="process-card"><span class="process-num">${String(index + 1).padStart(2, '0')}</span><h3>${esc(item.title)}</h3><p>${esc(item.text)}</p></article>`
+  ).join('');
+  node('reviewsGrid').innerHTML = page.reviews.map((review) =>
+    `<article class="review-card"><span class="quote">“</span><p>${esc(review.text)}</p><small>${esc(review.name)}</small></article>`
+  ).join('');
+  node('faqList').innerHTML = page.faq.map((item) =>
+    `<div class="faq-item"><button class="faq-question" aria-expanded="false">${esc(item.q)}<span>+</span></button><div class="faq-answer">${esc(item.a)}</div></div>`
+  ).join('');
 
   document.querySelectorAll('.faq-question').forEach((button) => {
     button.onclick = () => {
@@ -239,8 +368,8 @@ function render() {
     };
   });
 
-  const lightbox = $('#lightbox');
-  const lightboxImage = lightbox.querySelector('img');
+  const lightbox = node('lightbox');
+  const lightboxImage = lightbox?.querySelector('img');
   document.querySelectorAll('.portfolio-item img').forEach((image) => {
     image.onclick = () => {
       lightboxImage.src = image.src;
@@ -249,11 +378,21 @@ function render() {
       track('photo_open');
     };
   });
-  lightbox.querySelector('button').onclick = () => { lightbox.classList.remove('show'); lightbox.setAttribute('aria-hidden', 'true'); };
-  lightbox.onclick = (event) => { if (event.target === lightbox) lightbox.querySelector('button').click(); };
+  if (lightbox) {
+    lightbox.querySelector('button').onclick = () => {
+      lightbox.classList.remove('show');
+      lightbox.setAttribute('aria-hidden', 'true');
+    };
+    lightbox.onclick = (event) => {
+      if (event.target === lightbox) lightbox.querySelector('button').click();
+    };
+  }
+}
 
-  const menuButton = $('.menu-btn');
-  menuButton.onclick = () => document.querySelector('.site-header').classList.toggle('menu-open');
+function render() {
+  const pageType = document.body.dataset.page || 'landing';
+  if (pageType === 'landing') renderLanding();
+  else renderDirection(pageType);
 }
 
 async function start() {
