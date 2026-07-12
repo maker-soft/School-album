@@ -130,3 +130,19 @@ textarea { min-height: 110px; resize: vertical; }
   .header-actions .primary { padding: 0 15px; }
   .card-title-row { align-items: flex-start; flex-direction: column; }
 }
+
+.content-switcher { margin: 0 0 18px; padding: 6px; display: inline-flex; flex-wrap: wrap; gap: 6px; background: #e9ecee; border-radius: 12px; }
+.content-switcher button { padding: 10px 16px; border: 0; border-radius: 9px; background: transparent; color: #5c666d; font-weight: 700; cursor: pointer; }
+.content-switcher button.active { background: #17212b; color: #fff; box-shadow: 0 6px 18px rgba(23,33,43,.16); }
+.page-image-editor { display: grid; grid-template-columns: 280px 1fr; gap: 24px; align-items: start; }
+.section-copy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.section-copy-card { padding: 18px; border: 1px solid #e1e3e4; border-radius: 14px; background: #fafbfb; }
+.section-copy-card h4 { margin: 0 0 12px; font: 400 20px Georgia; }
+.section-copy-card label + label { margin-top: 14px; }
+.portfolio-admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.portfolio-admin-card { margin-top: 0; }
+.portfolio-admin-card .preview { aspect-ratio: 16/10; margin-bottom: 10px; }
+
+@media (max-width: 900px) {
+  .page-image-editor, .section-copy-grid, .portfolio-admin-grid { grid-template-columns: 1fr; }
+}

@@ -21,6 +21,8 @@ let data = clone(window.DEFAULT_CONTENT);
 let tab = 'dashboard';
 let db = null;
 let currentUser = null;
+let currentDirection = 'school';
+let currentTextPage = 'landing';
 
 function isConfigured() {
   const cfg = window.SITE_CONFIG || {};
@@ -57,12 +59,36 @@ async function verifyAdmin(userId) {
   return Boolean(membership);
 }
 
+
+function adaptLegacyContent(storedContent) {
+  const stored = clone(storedContent || {});
+  if (!stored.pages) stored.pages = {};
+  if (!stored.pages.school && (stored.hero || stored.albums || stored.process || stored.faq || stored.reviews)) {
+    const school = clone(window.DEFAULT_CONTENT.pages.school);
+    if (stored.hero) school.hero = mergeDefaults(school.hero, stored.hero);
+    if (Array.isArray(stored.albums)) school.albums = clone(stored.albums);
+    if (Array.isArray(stored.process)) school.process = clone(stored.process);
+    if (Array.isArray(stored.faq)) school.faq = clone(stored.faq);
+    if (Array.isArray(stored.reviews)) school.reviews = clone(stored.reviews);
+    if (Array.isArray(stored.albums)) {
+      school.portfolio = stored.albums.flatMap((album) =>
+        (album.gallery || []).map((image, index) => ({
+          image,
+          label: `${album.name || 'Альбом'} · ${String(index + 1).padStart(2, '0')}`
+        }))
+      );
+    }
+    stored.pages.school = school;
+  }
+  return stored;
+}
+
 async function loadContent() {
   const rowId = Number(window.SITE_CONFIG.CONTENT_ROW_ID || 1);
   const { data: row, error } = await db.from('site_content').select('content').eq('id', rowId).maybeSingle();
   if (error) throw error;
   if (row?.content) {
-    data = mergeDefaults(window.DEFAULT_CONTENT, row.content);
+    data = mergeDefaults(window.DEFAULT_CONTENT, adaptLegacyContent(row.content));
     return;
   }
   const { error: insertError } = await db.from('site_content').upsert({ id: rowId, content: data, updated_by: currentUser.id });
@@ -238,21 +264,62 @@ async function uploadToPath(input) {
 
 function render() {
   const titles = {
-    dashboard: 'Обзор', brand: 'Основное и логотипы', design: 'Дизайн и шрифты', albums: 'Альбомы',
-    process: 'Этапы работы', faq: 'Частые вопросы', reviews: 'Отзывы', data: 'Резервная копия'
+    dashboard: 'Обзор',
+    brand: 'Основное и логотипы',
+    design: 'Дизайн и шрифты',
+    pages: 'Тексты страниц',
+    albums: 'Альбомы',
+    portfolio: 'Портфолио',
+    process: 'Этапы работы',
+    faq: 'Частые вопросы',
+    reviews: 'Отзывы',
+    data: 'Резервная копия'
   };
   $('#pageTitle').textContent = titles[tab];
   if (tab === 'dashboard') dashboard();
   if (tab === 'brand') brand();
   if (tab === 'design') designEditor();
+  if (tab === 'pages') pageTextEditor();
   if (tab === 'albums') albums();
+  if (tab === 'portfolio') portfolioEditor();
   if (tab === 'process') repeatEditor('process');
   if (tab === 'faq') repeatEditor('faq');
   if (tab === 'reviews') repeatEditor('reviews');
   if (tab === 'data') dataTools();
   bind();
+  bindPageSelectors();
   if (tab === 'design') refreshDesignPreview();
   if (tab === 'brand') refreshLogoPreview();
+}
+
+function directionSwitcher() {
+  return `<div class="content-switcher">
+    <button type="button" data-direction="school" class="${currentDirection === 'school' ? 'active' : ''}">Школа</button>
+    <button type="button" data-direction="kindergarten" class="${currentDirection === 'kindergarten' ? 'active' : ''}">Детский сад</button>
+  </div>`;
+}
+
+function textPageSwitcher() {
+  return `<div class="content-switcher">
+    <button type="button" data-text-page="landing" class="${currentTextPage === 'landing' ? 'active' : ''}">Главная</button>
+    <button type="button" data-text-page="school" class="${currentTextPage === 'school' ? 'active' : ''}">Школа</button>
+    <button type="button" data-text-page="kindergarten" class="${currentTextPage === 'kindergarten' ? 'active' : ''}">Детский сад</button>
+  </div>`;
+}
+
+function bindPageSelectors() {
+  ws.querySelectorAll('[data-direction]').forEach((button) => {
+    button.onclick = () => {
+      currentDirection = button.dataset.direction;
+      render();
+    };
+  });
+  ws.querySelectorAll('[data-text-page]').forEach((button) => {
+    button.onclick = () => {
+      currentTextPage = button.dataset.textPage;
+      render();
+    };
+  });
 }
 
 async function dashboard() {
@@ -287,6 +354,8 @@ function imageEditor(title, path, value, hint, compact = false) {
 }
 
 function brand() {
+  const nav = data.global.navigation;
+  const footer = data.global.footer;
   ws.innerHTML = `
     <div class="card"><h3>Бренд и контакты</h3><div class="grid">
       ${field('Название', 'brand.name', data.brand.name)}
@@ -302,11 +371,17 @@ function brand() {
       ${imageEditor('Логотип в подвале', 'brand.logo.footer', data.brand.logo.footer, 'Если не загрузить, будет использован логотип из шапки.')}
       ${imageEditor('Favicon', 'brand.logo.favicon', data.brand.logo.favicon, 'Квадратное изображение 256×256 или 512×512 px.', true)}
     </div><div id="logoLivePreview" class="logo-live-preview"></div></div>
-    <div class="card"><h3>Первый экран</h3><div class="grid">
-      ${field('Надзаголовок', 'hero.eyebrow', data.hero.eyebrow)}
-      ${field('Заголовок', 'hero.title', data.hero.title)}
-      ${field('Описание', 'hero.text', data.hero.text, { type: 'textarea' })}
-      <label>Главное изображение<div class="preview"><img src="${esc(assetUrl(data.hero.image))}"></div><span class="upload-btn">Заменить<input type="file" accept="image/*" data-upload="hero.image"></span></label>
+    <div class="card"><h3>Меню и общие подписи</h3><div class="grid three">
+      ${field('Главная', 'global.navigation.home', nav.home)}
+      ${field('Школа', 'global.navigation.school', nav.school)}
+      ${field('Детский сад', 'global.navigation.kindergarten', nav.kindergarten)}
+      ${field('Альбомы', 'global.navigation.albums', nav.albums)}
+      ${field('Портфолио', 'global.navigation.portfolio', nav.portfolio)}
+      ${field('Как проходит съёмка', 'global.navigation.process', nav.process)}
+      ${field('FAQ', 'global.navigation.faq', nav.faq)}
+      ${field('Кнопка обсуждения', 'global.navigation.discuss', nav.discuss)}
+      ${field('Подпись ссылки VK', 'global.footer.vkLabel', footer.vkLabel)}
+      ${field('Общий текст подвала', 'global.footer.description', footer.description, { type: 'textarea' })}
     </div></div>`;
 }
 
@@ -428,27 +503,123 @@ function refreshDesignPreview() {
   node.style.setProperty('--p-transform', d.typography.headingTransform);
 }
 
+function pageTextEditor() {
+  if (currentTextPage === 'landing') {
+    const p = data.landing;
+    ws.innerHTML = `${textPageSwitcher()}
+      <div class="notice">Здесь редактируются все тексты главной страницы выбора направления.</div>
+      <div class="card"><h3>SEO и первый экран</h3><div class="grid">
+        ${field('Заголовок страницы браузера', 'landing.seoTitle', p.seoTitle)}
+        ${field('Описание для поисковых систем', 'landing.seoDescription', p.seoDescription, { type: 'textarea' })}
+        ${field('Надзаголовок', 'landing.eyebrow', p.eyebrow)}
+        ${field('Главный заголовок', 'landing.title', p.title, { type: 'textarea' })}
+        ${field('Вводный текст', 'landing.text', p.text, { type: 'textarea' })}
+      </div></div>
+      <div class="card"><h3>Карточка «Школа»</h3><div class="page-image-editor">
+        <div><div class="preview"><img src="${esc(assetUrl(p.schoolCard.image))}"></div><label class="upload-btn">Заменить изображение<input type="file" accept="image/*" data-upload="landing.schoolCard.image"></label></div>
+        <div class="grid">
+          ${field('Метка', 'landing.schoolCard.label', p.schoolCard.label)}
+          ${field('Заголовок', 'landing.schoolCard.title', p.schoolCard.title)}
+          ${field('Описание', 'landing.schoolCard.text', p.schoolCard.text, { type: 'textarea' })}
+          ${field('Текст кнопки', 'landing.schoolCard.button', p.schoolCard.button)}
+        </div>
+      </div></div>
+      <div class="card"><h3>Карточка «Детский сад»</h3><div class="page-image-editor">
+        <div><div class="preview"><img src="${esc(assetUrl(p.kindergartenCard.image))}"></div><label class="upload-btn">Заменить изображение<input type="file" accept="image/*" data-upload="landing.kindergartenCard.image"></label></div>
+        <div class="grid">
+          ${field('Метка', 'landing.kindergartenCard.label', p.kindergartenCard.label)}
+          ${field('Заголовок', 'landing.kindergartenCard.title', p.kindergartenCard.title)}
+          ${field('Описание', 'landing.kindergartenCard.text', p.kindergartenCard.text, { type: 'textarea' })}
+          ${field('Текст кнопки', 'landing.kindergartenCard.button', p.kindergartenCard.button)}
+        </div>
+      </div></div>
+      <div class="card"><h3>Финальный призыв</h3><div class="grid">
+        ${field('Надзаголовок', 'landing.ctaEyebrow', p.ctaEyebrow)}
+        ${field('Заголовок', 'landing.ctaTitle', p.ctaTitle, { type: 'textarea' })}
+        ${field('Текст кнопки', 'landing.ctaButton', p.ctaButton)}
+      </div></div>`;
+    return;
+  }
+
+  const key = currentTextPage;
+  const p = data.pages[key];
+  const path = `pages.${key}`;
+  ws.innerHTML = `${textPageSwitcher()}
+    <div class="notice">Редактируется страница «${esc(p.label)}». Все тексты ниже публикуются только на выбранной странице.</div>
+    <div class="card"><h3>SEO и название направления</h3><div class="grid">
+      ${field('Название направления', `${path}.label`, p.label)}
+      ${field('Заголовок страницы браузера', `${path}.seoTitle`, p.seoTitle)}
+      ${field('Описание для поисковых систем', `${path}.seoDescription`, p.seoDescription, { type: 'textarea' })}
+      ${field('Текст подвала страницы', `${path}.footerDescription`, p.footerDescription, { type: 'textarea' })}
+    </div></div>
+    <div class="card"><h3>Первый экран</h3><div class="page-image-editor">
+      <div><div class="preview"><img src="${esc(assetUrl(p.hero.image))}"></div><label class="upload-btn">Заменить главное изображение<input type="file" accept="image/*" data-upload="${path}.hero.image"></label></div>
+      <div class="grid">
+        ${field('Надзаголовок', `${path}.hero.eyebrow`, p.hero.eyebrow)}
+        ${field('Главный заголовок', `${path}.hero.title`, p.hero.title, { type: 'textarea' })}
+        ${field('Описание', `${path}.hero.text`, p.hero.text, { type: 'textarea' })}
+        ${field('Основная кнопка', `${path}.hero.primaryButton`, p.hero.primaryButton)}
+        ${field('Вторая ссылка', `${path}.hero.secondaryButton`, p.hero.secondaryButton)}
+        ${field('Номер заметки', `${path}.hero.noteNumber`, p.hero.noteNumber)}
+        ${field('Текст заметки', `${path}.hero.noteText`, p.hero.noteText, { type: 'textarea' })}
+        ${field('Заголовок плашки на фото', `${path}.hero.floatingTitle`, p.hero.floatingTitle)}
+        ${field('Подпись плашки на фото', `${path}.hero.floatingText`, p.hero.floatingText)}
+        ${field('Бегущая строка', `${path}.ticker`, p.ticker, { type: 'textarea' })}
+      </div>
+    </div></div>
+    <div class="card"><h3>Заголовки разделов</h3><div class="section-copy-grid">
+      ${sectionTextFields('Альбомы', `${path}.sections.albums`, p.sections.albums, true)}
+      ${sectionTextFields('Портфолио', `${path}.sections.portfolio`, p.sections.portfolio, true)}
+      ${sectionTextFields('Процесс', `${path}.sections.process`, p.sections.process, true)}
+      ${sectionTextFields('Отзывы', `${path}.sections.reviews`, p.sections.reviews, false)}
+      ${sectionTextFields('FAQ', `${path}.sections.faq`, p.sections.faq, false)}
+    </div></div>
+    <div class="card"><h3>Блоки для взрослых</h3><div class="grid">
+      ${field('Надзаголовок: родители', `${path}.audience.parents.eyebrow`, p.audience.parents.eyebrow)}
+      ${field('Заголовок: родители', `${path}.audience.parents.title`, p.audience.parents.title, { type: 'textarea' })}
+      ${field('Текст: родители', `${path}.audience.parents.text`, p.audience.parents.text, { type: 'textarea' })}
+      ${field('Надзаголовок: учителя / воспитатели', `${path}.audience.teachers.eyebrow`, p.audience.teachers.eyebrow)}
+      ${field('Заголовок: учителя / воспитатели', `${path}.audience.teachers.title`, p.audience.teachers.title, { type: 'textarea' })}
+      ${field('Текст: учителя / воспитатели', `${path}.audience.teachers.text`, p.audience.teachers.text, { type: 'textarea' })}
+    </div></div>
+    <div class="card"><h3>Финальный призыв</h3><div class="grid">
+      ${field('Надзаголовок', `${path}.cta.eyebrow`, p.cta.eyebrow)}
+      ${field('Заголовок', `${path}.cta.title`, p.cta.title, { type: 'textarea' })}
+      ${field('Текст кнопки', `${path}.cta.button`, p.cta.button)}
+    </div></div>`;
+}
+
+function sectionTextFields(title, path, section, withIntro) {
+  return `<div class="section-copy-card"><h4>${title}</h4>
+    ${field('Надзаголовок', `${path}.eyebrow`, section.eyebrow)}
+    ${field('Заголовок', `${path}.title`, section.title, { type: 'textarea' })}
+    ${withIntro ? field('Вводный текст', `${path}.intro`, section.intro, { type: 'textarea' }) : ''}
+  </div>`;
+}
+
 function albums() {
-  ws.innerHTML = data.albums.map((album, albumIndex) => `
+  const page = data.pages[currentDirection];
+  const basePath = `pages.${currentDirection}.albums`;
+  ws.innerHTML = `${directionSwitcher()}<div class="notice">Альбомы редактируются отдельно для школы и детского сада.</div>` + page.albums.map((album, albumIndex) => `
     <div class="card"><h3>${esc(album.name)}</h3><div class="album-editor">
-      <div><div class="preview"><img src="${esc(assetUrl(album.cover))}"></div><label class="upload-btn">Заменить обложку<input type="file" accept="image/*" data-upload="albums.${albumIndex}.cover"></label></div>
+      <div><div class="preview"><img src="${esc(assetUrl(album.cover))}"></div><label class="upload-btn">Заменить обложку<input type="file" accept="image/*" data-upload="${basePath}.${albumIndex}.cover"></label></div>
       <div><div class="grid">
-        ${field('Название', `albums.${albumIndex}.name`, album.name)}
-        ${field('Цена', `albums.${albumIndex}.price`, album.price)}
-        ${field('Метка', `albums.${albumIndex}.badge`, album.badge)}
-        ${field('Короткое описание', `albums.${albumIndex}.lead`, album.lead, { type: 'textarea' })}
+        ${field('Название', `${basePath}.${albumIndex}.name`, album.name)}
+        ${field('Цена', `${basePath}.${albumIndex}.price`, album.price)}
+        ${field('Метка', `${basePath}.${albumIndex}.badge`, album.badge)}
+        ${field('Короткое описание', `${basePath}.${albumIndex}.lead`, album.lead, { type: 'textarea' })}
       </div>
       <h4>Характеристики</h4>
-      ${album.details.map((detail, detailIndex) => field(`Строка ${detailIndex + 1}`, `albums.${albumIndex}.details.${detailIndex}`, detail)).join('')}
-      <h4>Галерея</h4>
-      <div class="gallery-grid">${album.gallery.map((image, imageIndex) => `<div class="gallery-item"><img src="${esc(assetUrl(image))}"><button data-remove-gallery="${albumIndex}.${imageIndex}">×</button></div>`).join('')}</div>
+      ${(album.details || []).map((detail, detailIndex) => field(`Строка ${detailIndex + 1}`, `${basePath}.${albumIndex}.details.${detailIndex}`, detail)).join('')}
+      <h4>Дополнительная галерея альбома</h4>
+      <div class="gallery-grid">${(album.gallery || []).map((image, imageIndex) => `<div class="gallery-item"><img src="${esc(assetUrl(image))}"><button data-remove-gallery="${albumIndex}.${imageIndex}">×</button></div>`).join('')}</div>
       <label class="upload-btn">Добавить фото<input type="file" accept="image/*" data-gallery-add="${albumIndex}"></label>
       </div></div></div>`).join('');
 
   ws.querySelectorAll('[data-remove-gallery]').forEach((button) => {
     button.onclick = () => {
       const [albumIndex, imageIndex] = button.dataset.removeGallery.split('.').map(Number);
-      data.albums[albumIndex].gallery.splice(imageIndex, 1);
+      page.albums[albumIndex].gallery.splice(imageIndex, 1);
       setSavingState('Есть несохранённые изменения');
       render();
     };
@@ -461,7 +632,7 @@ function albums() {
       setSavingState('Загрузка фотографии…');
       try {
         const url = await uploadFile(file);
-        data.albums[Number(input.dataset.galleryAdd)].gallery.push(url);
+        page.albums[Number(input.dataset.galleryAdd)].gallery.push(url);
         setSavingState('Есть несохранённые изменения');
         render();
         toast('Фотография добавлена. Нажмите «Сохранить».');
@@ -471,23 +642,62 @@ function albums() {
   });
 }
 
+function portfolioEditor() {
+  const page = data.pages[currentDirection];
+  const basePath = `pages.${currentDirection}.portfolio`;
+  ws.innerHTML = `${directionSwitcher()}
+    <div class="notice">Фотографии и подписи портфолио независимы от галерей альбомов. Их можно добавлять, удалять и менять местами вручную через удаление и повторное добавление.</div>
+    <div class="portfolio-admin-grid">${page.portfolio.map((item, index) => `
+      <div class="card portfolio-admin-card">
+        <div class="preview"><img src="${esc(assetUrl(item.image))}"></div>
+        <label class="upload-btn">Заменить фотографию<input type="file" accept="image/*" data-upload="${basePath}.${index}.image"></label>
+        ${field('Подпись', `${basePath}.${index}.label`, item.label)}
+        <div class="row-actions"><button class="danger" data-remove-portfolio="${index}">Удалить</button></div>
+      </div>`).join('')}</div>
+    <button id="addPortfolio" class="secondary">Добавить фотографию</button>`;
+
+  ws.querySelectorAll('[data-remove-portfolio]').forEach((button) => {
+    button.onclick = () => {
+      page.portfolio.splice(Number(button.dataset.removePortfolio), 1);
+      setSavingState('Есть несохранённые изменения');
+      render();
+    };
+  });
+  $('#addPortfolio').onclick = () => {
+    page.portfolio.push({ image: 'assets/images/demo-01.svg', label: 'Новая фотография' });
+    setSavingState('Есть несохранённые изменения');
+    render();
+  };
+}
+
 function repeatEditor(kind) {
+  const page = data.pages[currentDirection];
+  const basePath = `pages.${currentDirection}.${kind}`;
   const config = {
     process: { title: 'Этапы', first: 'title', second: 'text' },
     faq: { title: 'Вопросы и ответы', first: 'q', second: 'a' },
     reviews: { title: 'Отзывы', first: 'name', second: 'text' }
   }[kind];
-  ws.innerHTML = `<div class="card"><h3>${config.title}</h3>${data[kind].map((item, index) => `
-    <div class="repeat"><div class="grid">
-      ${field(kind === 'faq' ? 'Вопрос' : kind === 'reviews' ? 'Автор' : 'Название', `${kind}.${index}.${config.first}`, item[config.first])}
-      ${field(kind === 'faq' ? 'Ответ' : kind === 'reviews' ? 'Текст отзыва' : 'Описание', `${kind}.${index}.${config.second}`, item[config.second], { type: 'textarea' })}
-    </div><div class="row-actions"><button class="danger" data-remove="${index}">Удалить</button></div></div>`).join('')}
-    <button id="addItem" class="secondary">Добавить</button></div>`;
+  ws.innerHTML = `${directionSwitcher()}<div class="notice">Раздел редактируется отдельно для направления «${esc(page.label)}».</div>
+    <div class="card"><h3>${config.title}</h3>${page[kind].map((item, index) => `
+      <div class="repeat"><div class="grid">
+        ${field(kind === 'faq' ? 'Вопрос' : kind === 'reviews' ? 'Автор' : 'Название', `${basePath}.${index}.${config.first}`, item[config.first])}
+        ${field(kind === 'faq' ? 'Ответ' : kind === 'reviews' ? 'Текст отзыва' : 'Описание', `${basePath}.${index}.${config.second}`, item[config.second], { type: 'textarea' })}
+      </div><div class="row-actions"><button class="danger" data-remove="${index}">Удалить</button></div></div>`).join('')}
+      <button id="addItem" class="secondary">Добавить</button></div>`;
   ws.querySelectorAll('[data-remove]').forEach((button) => {
-    button.onclick = () => { data[kind].splice(Number(button.dataset.remove), 1); setSavingState('Есть несохранённые изменения'); render(); };
+    button.onclick = () => {
+      page[kind].splice(Number(button.dataset.remove), 1);
+      setSavingState('Есть несохранённые изменения');
+      render();
+    };
   });
   $('#addItem').onclick = () => {
-    data[kind].push(kind === 'faq' ? { q: 'Новый вопрос', a: 'Ответ' } : kind === 'reviews' ? { name: 'Имя', text: 'Текст отзыва' } : { title: 'Новый этап', text: 'Описание' });
+    page[kind].push(kind === 'faq'
+      ? { q: 'Новый вопрос', a: 'Ответ' }
+      : kind === 'reviews'
+        ? { name: 'Имя', text: 'Текст отзыва' }
+        : { title: 'Новый этап', text: 'Описание' });
     setSavingState('Есть несохранённые изменения');
     render();
   };
