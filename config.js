@@ -1,7 +1,7 @@
 window.SITE_CONFIG = {
   // Supabase Dashboard → Project Settings → Data API
-  SUPABASE_URL: "https://YOUR_PROJECT.supabase.co",
-  SUPABASE_PUBLISHABLE_KEY: "YOUR_PUBLISHABLE_OR_ANON_KEY",
+  SUPABASE_URL: "https://dtrptfttdfxiimzzujya.supabase.co",
+  SUPABASE_PUBLISHABLE_KEY: "sb_publishable_N1LcROsEWd-2ImwvsEb44Q_oAuNzxn_",
   CONTENT_ROW_ID: 1,
   STORAGE_BUCKET: "site-images",
 
