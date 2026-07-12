@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>НОВЫЕ ГРАНИ — школьные фотокниги</title>
-  <meta name="description" content="Современные школьные фотоальбомы в Новосибирске. Портфолио, варианты альбомов, этапы работы и ответы на вопросы.">
+  <title>НОВЫЕ ГРАНИ — выпускные альбомы</title>
+  <meta id="metaDescription" name="description" content="Выпускные альбомы для школы и детского сада.">
   <link id="siteFavicon" rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%2318202a%22/><path d=%22M17 45V19h8l14 17V19h8v26h-8L25 28v17z%22 fill=%22white%22/></svg>">
   <link id="customFontStylesheet" rel="stylesheet" href="" disabled>
   <link rel="stylesheet" href="assets/styles.css">
@@ -12,51 +12,40 @@
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body>
+<body data-page="landing">
 <header class="site-header">
-  <a class="brand" href="#top" aria-label="На главную">
-    <span class="brand-visual">
-      <img id="headerLogo" class="brand-logo" alt="" hidden>
-      <span id="headerMark" class="brand-mark">НГ</span>
-    </span>
-    <span id="headerBrandCopy" class="brand-copy">
-      <b id="brandName">НОВЫЕ ГРАНИ</b>
-      <small id="brandTagline">school photobook studio</small>
-    </span>
+  <a class="brand" href="./" aria-label="На главную">
+    <span class="brand-visual"><img id="headerLogo" class="brand-logo" alt="" hidden><span id="headerMark" class="brand-mark">НГ</span></span>
+    <span id="headerBrandCopy" class="brand-copy"><b id="brandName">НОВЫЕ ГРАНИ</b><small id="brandTagline"></small></span>
   </a>
-  <nav><a href="#albums">Альбомы</a><a href="#portfolio">Портфолио</a><a href="#process">Как проходит съёмка</a><a href="#faq">FAQ</a></nav>
-  <a id="headerVk" class="btn btn-dark" target="_blank" rel="noopener">Обсудить проект</a>
+  <nav class="landing-nav"><a id="navSchool" href="school.html"></a><a id="navKindergarten" href="kindergarten.html"></a></nav>
+  <a id="headerVk" class="btn btn-dark" target="_blank" rel="noopener"></a>
   <button class="menu-btn" aria-label="Меню">☰</button>
 </header>
-<main id="top">
-  <section class="hero">
-    <div class="hero-copy">
-      <p class="eyebrow" id="heroEyebrow"></p>
-      <h1 id="heroTitle"></h1>
-      <p class="hero-text" id="heroText"></p>
-      <div class="hero-actions"><a id="heroVk" class="btn btn-accent" target="_blank" rel="noopener">Выбрать альбом</a><a class="text-link" href="#portfolio">Смотреть работы →</a></div>
-      <div class="hero-note"><span>01</span><p>Съёмка, дизайн и печать<br>в одной команде</p></div>
+<main>
+  <section class="landing-hero">
+    <div class="landing-intro">
+      <p class="eyebrow" id="landingEyebrow"></p>
+      <h1 id="landingTitle"></h1>
+      <p id="landingText"></p>
     </div>
-    <div class="hero-media"><img id="heroImage" alt="Демонстрация школьного фотоальбома"><div class="floating-card"><b>3 коллекции</b><span>от лаконичной до авторской</span></div></div>
+    <div class="direction-grid">
+      <article class="direction-card">
+        <a href="school.html" class="direction-image"><img id="landingSchoolImage" alt="Школьные выпускные альбомы"></a>
+        <div class="direction-copy"><p class="eyebrow" id="landingSchoolLabel"></p><h2 id="landingSchoolTitle"></h2><p id="landingSchoolText"></p><a id="landingSchoolButton" class="btn btn-dark" href="school.html"></a></div>
+      </article>
+      <article class="direction-card direction-card-accent">
+        <a href="kindergarten.html" class="direction-image"><img id="landingKindergartenImage" alt="Выпускные альбомы для детского сада"></a>
+        <div class="direction-copy"><p class="eyebrow" id="landingKindergartenLabel"></p><h2 id="landingKindergartenTitle"></h2><p id="landingKindergartenText"></p><a id="landingKindergartenButton" class="btn btn-dark" href="kindergarten.html"></a></div>
+      </article>
+    </div>
   </section>
-  <section class="ticker"><div>ПОРТРЕТЫ · ДРУЗЬЯ · ШКОЛЬНАЯ ЖИЗНЬ · ДИЗАЙН · ПЕЧАТЬ · ПАМЯТЬ</div></section>
-  <section id="albums" class="section"><div class="section-head"><div><p class="eyebrow">Коллекции</p><h2>Три характера.<br>Одна настоящая история.</h2></div><p>Выберите формат, который соответствует характеру класса, бюджету и желаемой глубине истории.</p></div><div id="albumGrid" class="album-grid"></div></section>
-  <section id="portfolio" class="portfolio-section"><div class="section-head light"><div><p class="eyebrow">Портфолио</p><h2>Не постановка.<br>А живые воспоминания.</h2></div><p>Демонстрационные изображения заменяются через административную панель.</p></div><div id="portfolioRail" class="portfolio-rail"></div></section>
-  <section id="process" class="section"><div class="section-head"><div><p class="eyebrow">Процесс</p><h2>Спокойно для взрослых.<br>Интересно для детей.</h2></div><p>Берём организацию проекта на себя и сопровождаем класс на каждом этапе.</p></div><div id="processGrid" class="process-grid"></div></section>
-  <section class="audience"><div class="audience-card"><p class="eyebrow">Для родителей</p><h3>Прозрачный процесс и понятная стоимость</h3><p>Фиксируем состав услуги, сроки, порядок согласования и оплаты до начала проекта.</p></div><div class="audience-card accent"><p class="eyebrow">Для учителей</p><h3>Минимум организационной нагрузки</h3><p>Предоставляем готовые памятки, график съёмки и одного ответственного координатора.</p></div></section>
-  <section class="reviews section"><div class="section-head"><div><p class="eyebrow">Отзывы</p><h2>О нас говорят<br>после просмотра альбома.</h2></div></div><div id="reviewsGrid" class="reviews-grid"></div></section>
-  <section id="faq" class="section faq-section"><div class="section-head"><div><p class="eyebrow">FAQ</p><h2>Ответы до того,<br>как появятся вопросы.</h2></div></div><div id="faqList" class="faq-list"></div></section>
-  <section class="cta"><div><p class="eyebrow">Следующий выпуск — ваш</p><h2>Давайте создадим книгу,<br>которую класс сохранит.</h2></div><a id="footerVk" class="btn btn-light" target="_blank" rel="noopener">Написать во VK</a></section>
+  <section class="cta landing-cta"><div><p class="eyebrow" id="landingCtaEyebrow"></p><h2 id="landingCtaTitle"></h2></div><a id="landingCtaButton" class="btn btn-light" target="_blank" rel="noopener"></a></section>
 </main>
 <footer>
-  <div class="brand">
-    <span class="brand-visual"><img id="footerLogo" class="brand-logo" alt="" hidden><span id="footerMark" class="brand-mark">НГ</span></span>
-    <span id="footerBrandCopy" class="brand-copy"><b id="footerBrand">НОВЫЕ ГРАНИ</b><small id="footerCity">Новосибирск</small></span>
-  </div>
-  <p>Школьные фотокниги · съёмка, дизайн и печать.</p>
-  <div><a id="footerVk2" target="_blank" rel="noopener">VK</a></div>
+  <div class="brand"><span class="brand-visual"><img id="footerLogo" class="brand-logo" alt="" hidden><span id="footerMark" class="brand-mark">НГ</span></span><span id="footerBrandCopy" class="brand-copy"><b id="footerBrand">НОВЫЕ ГРАНИ</b><small id="footerCity"></small></span></div>
+  <p id="footerDescription"></p><div><a id="footerVk2" target="_blank" rel="noopener"></a></div>
 </footer>
-<div id="lightbox" class="lightbox" aria-hidden="true"><button aria-label="Закрыть">×</button><img alt="Просмотр фотографии"></div>
 <script src="assets/app.js"></script>
 </body>
 </html>
